@@ -1,0 +1,18 @@
+# CODEOWNERS — last matching line wins
+
+# Default — everything goes to you
+*                       @archi-cat
+
+# Application code
+/app/                   @archi-cat
+
+# Infrastructure
+/terraform/             @archi-cat
+/k8s/                   @archi-cat
+/scripts/               @archi-cat
+
+# CI / GitHub configuration
+/.github/               @archi-cat
+
+# Documentation
+/docs/                  @archi-cat
