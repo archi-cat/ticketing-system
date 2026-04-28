@@ -21,6 +21,7 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted |
 | [0002](0002-use-postgresql.md) | Use PostgreSQL Flexible Server (not Azure SQL) | Accepted |
 | [0003](0003-network-design.md) | Regional VNet design (subnet-per-role, DNS in-region) | Accepted |
+| [0004](0004-workload-identity-per-service.md) | One Workload Identity per service | Accepted |
 
 | [0003](0003-use-fastapi.md) | Use FastAPI for the HTTP API | Accepted |
 | [0004](0004-use-sqlalchemy-async.md) | Use SQLAlchemy 2.0 async with Alembic | Accepted |
