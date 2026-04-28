@@ -1,0 +1,92 @@
+name: Shared Infrastructure — ACR
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/shared/acr/**'
+      - '.github/workflows/infra-shared.yml'
+  pull_request:
+    paths:
+      - 'terraform/shared/acr/**'
+      - '.github/workflows/infra-shared.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write   # needed to comment terraform plan on PRs
+
+jobs:
+  terraform:
+    name: Terraform — shared ACR
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform/shared/acr
+
+    env:
+      ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      ARM_USE_OIDC:        true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=shared-acr.tfstate"
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        id: plan
+        run: |
+          terraform plan \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="acr_name=${{ secrets.ACR_NAME }}" \
+            -out=tfplan -no-color | tee plan_output.txt
+
+      - name: Comment plan on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('terraform/shared/acr/plan_output.txt', 'utf8');
+            const truncated = plan.length > 60000 ? plan.substring(0, 60000) + '\n\n...(truncated)' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '### Terraform plan — shared ACR\n```\n' + truncated + '\n```'
+            });
+
+      - name: Terraform apply
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: terraform apply -auto-approve tfplan
