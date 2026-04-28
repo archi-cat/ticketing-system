@@ -24,6 +24,7 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 | [0004](0004-workload-identity-per-service.md) | One Workload Identity per service | Accepted |
 | [0005](0005-aks-cluster-design.md) | AKS cluster design — node pools, Cilium, Azure CNI Overlay | Accepted |
 | [0006](0006-observability-design.md) | Observability — single workspace, split App Insights | Accepted |
+| [0007](0007-postgres-design.md) | PostgreSQL — Flexible Server with VNet injection, AAD-only auth | Accepted |
 
 | [0003](0003-use-fastapi.md) | Use FastAPI for the HTTP API | Accepted |
 | [0004](0004-use-sqlalchemy-async.md) | Use SQLAlchemy 2.0 async with Alembic | Accepted |
