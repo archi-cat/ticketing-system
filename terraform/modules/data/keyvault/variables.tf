@@ -72,18 +72,23 @@ variable "secrets" {
 }
 
 variable "secret_reader_principal_ids" {
-  description = "List of principal IDs (UAMIs) to grant 'Key Vault Secrets User' on the vault"
-  type        = list(string)
-  default     = []
+  description = <<-EOT
+    Map of logical name to principal ID for principals that should receive
+    'Key Vault Secrets User' on the vault. Logical names (the map keys) must
+    be plan-time-known strings — they form part of the resource address.
+  EOT
+  type        = map(string)
+  default     = {}
 }
 
 variable "secret_officer_principal_ids" {
   description = <<-EOT
-    List of principal IDs to grant 'Key Vault Secrets Officer' on the vault.
-    Typically the GitHub Actions service principal so that CI can manage secrets.
+    Map of logical name to principal ID for principals that should receive
+    'Key Vault Secrets Officer' on the vault. Typically the GitHub Actions
+    service principal so CI can manage secrets.
   EOT
-  type        = list(string)
-  default     = []
+  type        = map(string)
+  default     = {}
 }
 
 variable "tags" {
