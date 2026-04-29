@@ -46,7 +46,7 @@ resource "azurerm_key_vault" "main" {
 # manually to the human operator when needed for break-glass access.
 
 resource "azurerm_role_assignment" "secret_reader" {
-  for_each = toset(var.secret_reader_principal_ids)
+  for_each = var.secret_reader_principal_ids
 
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Secrets User"
@@ -54,7 +54,7 @@ resource "azurerm_role_assignment" "secret_reader" {
 }
 
 resource "azurerm_role_assignment" "secret_officer" {
-  for_each = toset(var.secret_officer_principal_ids)
+  for_each = var.secret_officer_principal_ids
 
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Secrets Officer"

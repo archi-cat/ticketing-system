@@ -25,16 +25,16 @@ module "keyvault" {
   }
 
   # Application UAMIs get read access
-  secret_reader_principal_ids = [
-    module.identity.identity_principal_ids.api,
-    module.identity.identity_principal_ids.worker,
-    module.identity.identity_principal_ids.scheduler,
-  ]
+  secret_reader_principal_ids = {
+    api       = module.identity.identity_principal_ids.api,
+    worker    = module.identity.identity_principal_ids.worker,
+    scheduler = module.identity.identity_principal_ids.scheduler,
+  }
 
   # GitHub Actions SP gets read-write access
-  secret_officer_principal_ids = [
-    var.github_actions_sp_object_id,
-  ]
+  secret_officer_principal_ids = {
+    github_actions = var.gh_actions_sp_object_id,
+  }
 
   tags = {
     environment = "primary"
