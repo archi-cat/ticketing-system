@@ -21,6 +21,10 @@ resource "azurerm_servicebus_namespace" "main" {
   sku                 = var.sku
   capacity            = var.messaging_units
 
+  # Premium-only: number of message partitions. Must be 1, 2, or 4.
+  # We use 1 for the single messaging unit configuration.
+  premium_messaging_partitions = var.premium_messaging_partitions
+
   # ── Public access disabled ──────────────────────────────────────────────────
   public_network_access_enabled = false
 

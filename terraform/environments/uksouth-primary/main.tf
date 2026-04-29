@@ -4,6 +4,11 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
+
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.4"
+    }
   }
   required_version = ">= 1.9.0"
 }
@@ -210,6 +215,18 @@ module "servicebus" {
   tags = var.tags
 }
 
+# ── Detect the IP running terraform apply ─────────────────────────────────────
+# Used to allow Terraform-controlled access to the Key Vault, which otherwise
+# would be unreachable from outside the VNet.
+
+data "http" "myip" {
+  url = "https://api.ipify.org"
+}
+
+locals {
+  deployer_ip_cidr = "${chomp(data.http.myip.response_body)}/32"
+}
+
 # Key Vault — RBAC, Private Endpoint, bootstrap Redis key
 module "keyvault" {
   source = "../../modules/data/keyvault"
@@ -223,6 +240,12 @@ module "keyvault" {
   private_dns_zone_id        = module.network.private_dns_zone_ids.keyvault
 
   log_analytics_workspace_id = module.observability.log_analytics_workspace_id
+
+  allowed_ip_ranges = [
+    local.deployer_ip_cidr,
+    # Add GitHub Actions runner ranges if running from CI:
+    # "4.148.0.0/16", etc. — see https://api.github.com/meta
+  ]
 
   # Bootstrap the Redis access key as a secret
   secrets = {

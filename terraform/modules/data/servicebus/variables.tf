@@ -78,3 +78,14 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "premium_messaging_partitions" {
+  description = "Number of premium messaging partitions (1, 2, or 4). Higher values increase parallelism."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = contains([1, 2, 4], var.premium_messaging_partitions)
+    error_message = "premium_messaging_partitions must be 1, 2, or 4."
+  }
+}

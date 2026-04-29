@@ -96,3 +96,16 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "allowed_ip_ranges" {
+  description = <<-EOT
+    Public IP ranges allowed to access the vault, in addition to Private Endpoint
+    access. Used to allow Terraform/CLI calls to manage secrets from outside the
+    VNet. Empty list means only Private Endpoint access (which prevents Terraform
+    from managing secret values).
+
+    Format: list of CIDRs, e.g. ["203.0.113.5/32", "198.51.100.0/24"]
+  EOT
+  type    = list(string)
+  default = []
+}

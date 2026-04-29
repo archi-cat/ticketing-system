@@ -14,9 +14,13 @@ variable "cluster_name" {
 }
 
 variable "kubernetes_version" {
-  description = "Kubernetes version (e.g. '1.30'). Use major.minor only — patches are managed by Azure."
+  description = <<-EOT
+    Kubernetes major.minor version (e.g. '1.35'). Patches are managed by Azure.
+    Avoid versions that have moved to LTS-only — they require Premium tier.
+    Run `az aks get-versions --location <region>` to see currently supported versions.
+  EOT
   type        = string
-  default     = "1.30"
+  default     = "1.35"
 }
 
 variable "system_subnet_id" {

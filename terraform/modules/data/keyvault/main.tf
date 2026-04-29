@@ -28,12 +28,17 @@ resource "azurerm_key_vault" "main" {
   soft_delete_retention_days = var.soft_delete_retention_days
   purge_protection_enabled   = false
 
-  # ── Public access disabled ──────────────────────────────────────────────────
-  public_network_access_enabled = false
+  # ── Network access ──────────────────────────────────────────────────────────
+  # Public access is enabled but tightly controlled by network_acls.
+  # The Private Endpoint provides primary access from the VNet; the IP
+  # allow-list lets Terraform/CLI calls reach the vault from outside the VNet
+  # for secret management.
+  public_network_access_enabled = true
 
   network_acls {
     default_action = "Deny"
     bypass         = "AzureServices"
+    ip_rules       = var.allowed_ip_ranges
   }
 
   tags = var.tags
