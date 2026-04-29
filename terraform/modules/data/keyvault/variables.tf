@@ -106,6 +106,6 @@ variable "allowed_ip_ranges" {
 
     Format: list of CIDRs, e.g. ["203.0.113.5/32", "198.51.100.0/24"]
   EOT
-  type    = list(string)
-  default = []
+  type        = list(string)
+  default     = []
 }
