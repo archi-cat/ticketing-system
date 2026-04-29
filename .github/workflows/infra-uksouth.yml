@@ -1,0 +1,98 @@
+name: Infrastructure — uksouth Environment
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/environments/uksouth-primary/**'
+      - 'terraform/modules/**'
+      - '.github/workflows/infra-uksouth.yml'
+  pull_request:
+    paths:
+      - 'terraform/environments/uksouth-primary/**'
+      - 'terraform/modules/**'
+      - '.github/workflows/infra-uksouth.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform:
+    name: Terraform — uksouth
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform/environments/uksouth-primary
+
+    env:
+      ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      ARM_USE_OIDC:        true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+
+      - name: Terraform init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=uksouth-primary.tfstate"
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        id: plan
+        run: |
+          terraform plan \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="name_suffix=${{ secrets.NAME_SUFFIX }}" \
+            -var="gh_actions_sp_object_id=${{ secrets.GH_ACTIONS_SP_OBJECT_ID }}" \
+            -var="postgres_entra_admin_object_id=${{ secrets.POSTGRES_ENTRA_ADMIN_OBJECT_ID }}" \
+            -var="postgres_entra_admin_name=${{ secrets.POSTGRES_ENTRA_ADMIN_NAME }}" \
+            -out=tfplan -no-color | tee plan_output.txt
+
+      - name: Comment plan on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('terraform/environments/uksouth-primary/plan_output.txt', 'utf8');
+            const truncated = plan.length > 60000 ? plan.substring(0, 60000) + '\n\n...(truncated)' : plan;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '### Terraform plan — uksouth-primary\n```\n' + truncated + '\n```'
+            });
+
+      - name: Terraform apply
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: terraform apply -auto-approve tfplan
