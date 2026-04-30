@@ -10,7 +10,7 @@ dependencies = [
     "uvicorn[standard]==0.34.0",
 
     # Settings and validation
-    "pydantic==2.10.4",
+    "pydantic[email]==2.10.4",
     "pydantic-settings==2.7.1",
 
     # Database — PostgreSQL via SQLAlchemy 2 async

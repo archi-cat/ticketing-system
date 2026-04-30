@@ -11,6 +11,9 @@ from ticketing_api.infrastructure.keyvault import KeyVaultClient
 from ticketing_api.infrastructure.redis_client import RedisClient
 from ticketing_api.infrastructure.servicebus import ServiceBusPublisher
 from ticketing_api.observability import configure_observability
+from ticketing_api.services.bookings import BookingService
+from ticketing_api.services.locks import DistributedLock
+from ticketing_api.services.reservations import ReservationService
 from ticketing_api.settings import Settings, get_settings
 
 logger = structlog.get_logger(__name__)
@@ -40,11 +43,18 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     await redis.startup()
     await servicebus.startup()
 
+    # Services
+    lock = DistributedLock(redis.client)
+    reservation_service = ReservationService(settings, database, lock, servicebus)
+    booking_service = BookingService(settings, database, servicebus)
+
     # Stash on app.state for routes/dependencies to access
     app.state.keyvault = keyvault
     app.state.database = database
     app.state.redis = redis
     app.state.servicebus = servicebus
+    app.state.reservation_service = reservation_service
+    app.state.booking_service = booking_service
 
     logger.info("api_ready")
     try:
@@ -90,7 +100,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         Kubernetes uses this to decide whether to send traffic to the pod.
         """
         from fastapi import HTTPException
-
         from sqlalchemy import text
 
         results: dict[str, str] = {}
@@ -112,14 +121,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         # Service Bus — check is "is_enabled and not closed". We deliberately
         # don't send a real message — Service Bus has no cheap ping equivalent.
-        if app.state.servicebus.is_enabled:
-            results["servicebus"] = "ok"
-        else:
-            results["servicebus"] = "disabled"
+        results["servicebus"] = (
+            "ok" if app.state.servicebus.is_enabled else "disabled"
+        )
 
         if any(v.startswith("error") for v in results.values()):
             raise HTTPException(status_code=503, detail={"checks": results})
-
         return {"checks": results}
     
     # Backwards-compat alias
