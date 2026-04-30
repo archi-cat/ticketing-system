@@ -264,6 +264,7 @@ module "keyvault" {
   # GitHub Actions SP can manage secrets
   secret_officer_principal_ids = {
     github_actions = var.gh_actions_sp_object_id
+    operator       = var.postgres_entra_admin_object_id
   }
 
   tags = var.tags
