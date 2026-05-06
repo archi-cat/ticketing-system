@@ -133,6 +133,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+    
+    # Mount domain routes
+    from ticketing_api.routes import register_routes
+    register_routes(app)
 
     return app
 
