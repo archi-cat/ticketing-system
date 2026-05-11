@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ticketing-region-config
+  namespace: ticketing
+data:
+  # Connection details — set per-region from the Terraform outputs at deploy
+  # time. The deploy workflow uses envsubst-style substitution to fill these in.
+  POSTGRES_HOST: ${POSTGRES_FQDN}
+  POSTGRES_PORT: "5432"
+  POSTGRES_DATABASE: ticketing
+  POSTGRES_USER: ${POSTGRES_USER}             # the UAMI display name per service
+  REDIS_HOST: ${REDIS_HOSTNAME}
+  REDIS_PORT: "6380"                          # SSL port
+  SERVICEBUS_FULLY_QUALIFIED_NAMESPACE: ${SERVICEBUS_FQDN}
+  KEYVAULT_URI: ${KEYVAULT_URI}
+  APPLICATIONINSIGHTS_CONNECTION_STRING: ${APP_INSIGHTS_CONNECTION_STRING_API}

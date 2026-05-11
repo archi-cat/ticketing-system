@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: ticketing
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          image: ${ACR_LOGIN_SERVER}/ticketing-api:${IMAGE_TAG_API}
+          env:
+            - name: POSTGRES_USER
+              value: ${UAMI_API_NAME}
+            - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+              value: ${APP_INSIGHTS_CONNECTION_STRING_API}

@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: ticketing
+spec:
+  template:
+    spec:
+      containers:
+        - name: worker
+          image: ${ACR_LOGIN_SERVER}/ticketing-worker:${IMAGE_TAG_WORKER}
+          env:
+            - name: POSTGRES_USER
+              value: ${UAMI_WORKER_NAME}
+            - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+              value: ${APP_INSIGHTS_CONNECTION_STRING_WORKERS}
