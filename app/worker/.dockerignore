@@ -1,0 +1,35 @@
+# Build artefacts
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local config — never bake into images
+.env
+.env.*
+!.env.example
+
+# Tests don't need to be in the image
+tests/
+
+# Alembic — API only, doesn't need to be in worker/scheduler.
+# (Leaving it in for API since migrations run inside the cluster job in a
+# later phase; for now this is harmless.)
+
+# Documentation — README is fine to include, but generated stuff isn't
+*.log
+*.bak

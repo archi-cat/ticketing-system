@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -24,12 +24,12 @@ class EventORM(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column()
     venue: Mapped[str] = mapped_column()
-    starts_at: Mapped[datetime] = mapped_column()
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     total_seats: Mapped[int] = mapped_column()
     available_seats: Mapped[int] = mapped_column()
     price_pence: Mapped[int] = mapped_column()
-    created_at: Mapped[datetime] = mapped_column()
-    updated_at: Mapped[datetime] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class ReservationORM(Base):
@@ -40,8 +40,8 @@ class ReservationORM(Base):
     customer_email: Mapped[str] = mapped_column()
     seat_count: Mapped[int] = mapped_column()
     status: Mapped[str] = mapped_column()
-    expires_at: Mapped[datetime] = mapped_column()
-    created_at: Mapped[datetime] = mapped_column()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         CheckConstraint(
@@ -65,7 +65,7 @@ class BookingORM(Base):
         unique=True,
     )
     payment_reference: Mapped[str] = mapped_column()
-    confirmed_at: Mapped[datetime] = mapped_column()
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class ProcessedMessageORM(Base):
@@ -78,4 +78,4 @@ class ProcessedMessageORM(Base):
     __tablename__ = "processed_messages"
 
     message_id: Mapped[str] = mapped_column(primary_key=True)
-    processed_at: Mapped[datetime] = mapped_column()
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

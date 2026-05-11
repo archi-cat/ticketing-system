@@ -25,3 +25,77 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  api:
+    build:
+      context: ./app/api
+    image: ticketing-api:dev
+    environment:
+      ENVIRONMENT: local
+      LOG_FORMAT: console
+      LOG_LEVEL: DEBUG
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DATABASE: ticketing
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USE_WORKLOAD_IDENTITY: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_USE_TLS: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles: ["full"]   # only starts with `docker compose --profile full up`
+
+  worker:
+    build:
+      context: ./app/worker
+    image: ticketing-worker:dev
+    environment:
+      ENVIRONMENT: local
+      LOG_FORMAT: console
+      LOG_LEVEL: DEBUG
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DATABASE: ticketing
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USE_WORKLOAD_IDENTITY: "false"
+      # Service Bus left empty — worker starts but doesn't consume
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles: ["full"]
+
+  scheduler:
+    build:
+      context: ./app/scheduler
+    image: ticketing-scheduler:dev
+    environment:
+      ENVIRONMENT: local
+      LOG_FORMAT: console
+      LOG_LEVEL: DEBUG
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DATABASE: ticketing
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USE_WORKLOAD_IDENTITY: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_USE_TLS: "false"
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    profiles: ["full"]
