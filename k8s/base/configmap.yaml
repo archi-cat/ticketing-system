@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ticketing-base-config
+  namespace: ticketing
+data:
+  # Non-secret settings that apply across all regions. Region-specific
+  # ConfigMaps in the overlay override these where needed.
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  ENVIRONMENT: "prod"
+
+  # Reservation business rules
+  RESERVATION_TTL_SECONDS: "900"
+  RESERVATION_LOCK_TTL_SECONDS: "5"
+  RESERVATION_MAX_SEATS_PER_REQUEST: "10"
+
+  # Service Bus topology — these names match what the Terraform module
+  # provisioned, identical across regions
+  SERVICEBUS_RESERVATION_TOPIC: "reservation-events"
+  SERVICEBUS_BOOKING_TOPIC: "booking-events"
+  SERVICEBUS_SEAT_DECREMENT_SUBSCRIPTION: "seat-decrement"
+  SERVICEBUS_AUDIT_LOG_SUBSCRIPTION: "audit-log"
+  SERVICEBUS_CONFIRMATION_EMAIL_SUBSCRIPTION: "confirmation-email"
+
+  # Auth model flags — always Workload Identity in the cluster
+  POSTGRES_USE_WORKLOAD_IDENTITY: "true"
+  SERVICEBUS_USE_WORKLOAD_IDENTITY: "true"
+
+  # Postgres connection pool (per pod)
+  POSTGRES_POOL_MIN_SIZE: "5"
+  POSTGRES_POOL_MAX_SIZE: "20"
+
+  # Redis — TLS-only in the cloud
+  REDIS_USE_TLS: "true"
+  REDIS_KEYVAULT_SECRET_NAME: "redis-primary-key"

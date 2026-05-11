@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler
+  namespace: ticketing
+spec:
+  template:
+    spec:
+      containers:
+        - name: scheduler
+          image: ${ACR_LOGIN_SERVER}/ticketing-scheduler:${IMAGE_TAG_SCHEDULER}
+          env:
+            - name: POSTGRES_USER
+              value: ${UAMI_SCHEDULER_NAME}
+            - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+              value: ${APP_INSIGHTS_CONNECTION_STRING_WORKERS}

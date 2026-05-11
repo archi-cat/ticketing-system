@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ticketing
+
+resources:
+  - ../../base
+  - configmap.yaml
+
+patches:
+  - path: patches/api-deployment.yaml
+    target:
+      kind: Deployment
+      name: api
+  - path: patches/worker-deployment.yaml
+    target:
+      kind: Deployment
+      name: worker
+  - path: patches/scheduler-deployment.yaml
+    target:
+      kind: Deployment
+      name: scheduler
+  - path: patches/api-serviceaccount.yaml
+    target:
+      kind: ServiceAccount
+      name: api-service-account
+  - path: patches/worker-serviceaccount.yaml
+    target:
+      kind: ServiceAccount
+      name: worker-service-account
+  - path: patches/scheduler-serviceaccount.yaml
+    target:
+      kind: ServiceAccount
+      name: scheduler-service-account
+  - path: patches/gateway.yaml
+    target:
+      kind: Gateway
+      name: ticketing
+
+# Labels applied across the overlay, layered on top of base labels
+labels:
+  - includeSelectors: false
+    pairs:
+      deployment.region: uksouth

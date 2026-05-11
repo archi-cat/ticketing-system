@@ -1,0 +1,18 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ticketing-api
+  namespace: ticketing
+spec:
+  parentRefs:
+    - name: ticketing
+  hostnames: []                    # no host restriction in Phase 1
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: api
+          port: 80
+          weight: 100

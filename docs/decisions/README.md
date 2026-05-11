@@ -28,6 +28,7 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 | [0008](0008-redis-design.md) | Redis — Premium with Private Endpoint, access-key auth via Key Vault | Accepted |
 | [0009](0009-servicebus-design.md) | Service Bus — Premium with Private Endpoint, SAS auth disabled | Accepted |
 | [0010](0010-keyvault-design.md) | Key Vault — RBAC mode, Private Endpoint, purge protection on | Accepted |
+| [0011](0011-kustomize-manifest-structure.md) | Kubernetes manifests with Kustomize — base + per-region overlays | Accepted |
 
 | [0003](0003-use-fastapi.md) | Use FastAPI for the HTTP API | Accepted |
 | [0004](0004-use-sqlalchemy-async.md) | Use SQLAlchemy 2.0 async with Alembic | Accepted |
