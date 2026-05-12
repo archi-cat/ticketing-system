@@ -1,0 +1,265 @@
+name: Deploy Service (reusable)
+
+# Reusable workflow — called by deploy-api.yml, deploy-worker.yml, deploy-scheduler.yml
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: "Service name: api | worker | scheduler"
+        type: string
+        required: true
+      image_tag:
+        description: "Image tag — typically the git SHA"
+        type: string
+        required: true
+    secrets:
+      AZURE_CLIENT_ID:
+        required: true
+      AZURE_TENANT_ID:
+        required: true
+      AZURE_SUBSCRIPTION_ID:
+        required: true
+      TF_STATE_RESOURCE_GROUP:
+        required: true
+      TF_STATE_STORAGE_ACCOUNT:
+        required: true
+      TF_STATE_CONTAINER:
+        required: true
+
+jobs:
+  build-and-deploy:
+    name: Build, scan, push, and deploy ${{ inputs.service }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write    # OIDC federated identity to Azure
+      contents: read
+
+    env:
+      ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      ARM_USE_OIDC:        true
+      SERVICE:             ${{ inputs.service }}
+      IMAGE_TAG:           ${{ inputs.image_tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── Read Terraform outputs ────────────────────────────────────────────
+      # Reads the uksouth-primary state to discover all the runtime values
+      # we need to deploy: AKS cluster, ACR, UAMI client IDs, etc.
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform init (uksouth-primary state)
+        working-directory: terraform/environments/uksouth-primary
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=uksouth-primary.tfstate"
+
+      - name: Read Terraform outputs
+        id: tf
+        working-directory: terraform/environments/uksouth-primary
+        run: |
+          set -euo pipefail
+
+          # Read outputs we'll use to render manifests + log into ACR
+          echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)" >> "$GITHUB_OUTPUT"
+          echo "resource_group_name=$(terraform output -raw resource_group_name)" >> "$GITHUB_OUTPUT"
+          echo "postgres_fqdn=$(terraform output -raw postgres_fqdn)" >> "$GITHUB_OUTPUT"
+          echo "redis_hostname=$(terraform output -raw redis_hostname)" >> "$GITHUB_OUTPUT"
+          echo "servicebus_fqdn=$(terraform output -raw servicebus_fqdn)" >> "$GITHUB_OUTPUT"
+          echo "keyvault_uri=$(terraform output -raw keyvault_uri)" >> "$GITHUB_OUTPUT"
+
+          # Workload Identity client IDs (one per service)
+          # The Terraform output is a JSON map — emit individually
+          {
+            echo "wi_client_id_api=$(terraform output -json workload_identity_client_ids | jq -r .api)"
+            echo "wi_client_id_worker=$(terraform output -json workload_identity_client_ids | jq -r .worker)"
+            echo "wi_client_id_scheduler=$(terraform output -json workload_identity_client_ids | jq -r .scheduler)"
+          } >> "$GITHUB_OUTPUT"
+
+          # App Insights connection strings (sensitive — write to env, not output)
+          {
+            echo "APP_INSIGHTS_CONNECTION_STRING_API<<EOF_API"
+            terraform output -json application_insights_connection_strings | jq -r .api
+            echo "EOF_API"
+            echo "APP_INSIGHTS_CONNECTION_STRING_WORKERS<<EOF_WORKERS"
+            terraform output -json application_insights_connection_strings | jq -r .workers
+            echo "EOF_WORKERS"
+          } >> "$GITHUB_ENV"
+
+      # ── Read shared ACR state ────────────────────────────────────────────
+      - name: Terraform init (shared ACR state)
+        working-directory: terraform/shared/acr
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=shared-acr.tfstate"
+
+      - name: Read ACR outputs
+        id: acr
+        working-directory: terraform/shared/acr
+        run: |
+          echo "acr_name=$(terraform output -raw acr_name)" >> "$GITHUB_OUTPUT"
+          echo "acr_login_server=$(terraform output -raw acr_login_server)" >> "$GITHUB_OUTPUT"
+
+      # ── Build, scan, push the image ───────────────────────────────────────
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.acr.outputs.acr_login_server }}
+          username: ${{ secrets.AZURE_CLIENT_ID }}
+          password: ${{ env.ACR_TOKEN }}
+        env:
+          # az login produced an OIDC session; we ask Azure for an ACR-scoped token
+          ACR_TOKEN: ""    # set in next step
+
+      - name: Acquire ACR access token
+        id: acr_token
+        run: |
+          # Use the federated Azure session to mint an ACR access token
+          TOKEN=$(az acr login --name "${{ steps.acr.outputs.acr_name }}" --expose-token --output tsv --query accessToken)
+          echo "::add-mask::$TOKEN"
+          echo "acr_token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Re-login to ACR with token
+        # The earlier login step ran with an empty password. Now we have a real
+        # token, log in properly. (Simpler alternative: skip the first login and
+        # only do this one — keeping both for clarity.)
+        run: |
+          echo "${{ steps.acr_token.outputs.acr_token }}" | \
+            docker login "${{ steps.acr.outputs.acr_login_server }}" \
+              --username "00000000-0000-0000-0000-000000000000" \
+              --password-stdin
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: app/${{ inputs.service }}
+          file: app/${{ inputs.service }}/Dockerfile
+          push: false
+          load: true
+          tags: |
+            ${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ inputs.service }}:${{ inputs.image_tag }}
+            ${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ inputs.service }}:latest
+          cache-from: type=gha,scope=${{ inputs.service }}
+          cache-to: type=gha,scope=${{ inputs.service }},mode=max
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ inputs.service }}:${{ inputs.image_tag }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'        # fail the workflow if anything CRITICAL/HIGH found
+          ignore-unfixed: true   # don't fail on findings with no fix available yet
+
+      - name: Push image to ACR
+        run: |
+          docker push "${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ inputs.service }}:${{ inputs.image_tag }}"
+          docker push "${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ inputs.service }}:latest"
+
+      # ── Deploy to AKS ─────────────────────────────────────────────────────
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group "${{ steps.tf.outputs.resource_group_name }}" \
+            --name "${{ steps.tf.outputs.aks_cluster_name }}" \
+            --overwrite-existing
+
+      - name: Install kubelogin (Workload Identity for kubectl)
+        run: |
+          curl -L -o kubelogin.zip https://github.com/Azure/kubelogin/releases/download/v0.1.5/kubelogin-linux-amd64.zip
+          unzip kubelogin.zip
+          sudo mv bin/linux_amd64/kubelogin /usr/local/bin/
+
+      - name: Convert kubeconfig to use Azure CLI auth
+        run: kubelogin convert-kubeconfig -l azurecli
+
+      - name: Verify cluster connectivity
+        run: kubectl get nodes
+
+      - name: Ensure Redis Secret exists (scheduler only)
+        if: inputs.service == 'scheduler'
+        run: |
+          # Scheduler reads the Redis primary key from a Kubernetes Secret.
+          # The deploy workflow ensures the Secret exists with the current
+          # value from Key Vault. Idempotent — kubectl apply replaces.
+          REDIS_PASSWORD=$(az keyvault secret show \
+            --vault-name "$(echo '${{ steps.tf.outputs.keyvault_uri }}' | sed -E 's|https://([^.]+).*|\1|')" \
+            --name redis-primary-key \
+            --query value -o tsv)
+
+          kubectl create namespace ticketing --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create secret generic scheduler-redis-credentials \
+            --namespace ticketing \
+            --from-literal=redis-password="$REDIS_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Render manifests with envsubst
+        env:
+          ACR_LOGIN_SERVER: ${{ steps.acr.outputs.acr_login_server }}
+          IMAGE_TAG_API: ${{ inputs.service == 'api' && inputs.image_tag || 'latest' }}
+          IMAGE_TAG_WORKER: ${{ inputs.service == 'worker' && inputs.image_tag || 'latest' }}
+          IMAGE_TAG_SCHEDULER: ${{ inputs.service == 'scheduler' && inputs.image_tag || 'latest' }}
+          POSTGRES_FQDN: ${{ steps.tf.outputs.postgres_fqdn }}
+          REDIS_HOSTNAME: ${{ steps.tf.outputs.redis_hostname }}
+          SERVICEBUS_FQDN: ${{ steps.tf.outputs.servicebus_fqdn }}
+          KEYVAULT_URI: ${{ steps.tf.outputs.keyvault_uri }}
+          WORKLOAD_IDENTITY_CLIENT_ID_API: ${{ steps.tf.outputs.wi_client_id_api }}
+          WORKLOAD_IDENTITY_CLIENT_ID_WORKER: ${{ steps.tf.outputs.wi_client_id_worker }}
+          WORKLOAD_IDENTITY_CLIENT_ID_SCHEDULER: ${{ steps.tf.outputs.wi_client_id_scheduler }}
+          UAMI_API_NAME: uami-ticketing-uksouth-api
+          UAMI_WORKER_NAME: uami-ticketing-uksouth-worker
+          UAMI_SCHEDULER_NAME: uami-ticketing-uksouth-scheduler
+          AGC_NAME: agc-ticketing-uksouth
+          APP_INSIGHTS_CONNECTION_STRING_API: ${{ env.APP_INSIGHTS_CONNECTION_STRING_API }}
+          APP_INSIGHTS_CONNECTION_STRING_WORKERS: ${{ env.APP_INSIGHTS_CONNECTION_STRING_WORKERS }}
+        run: |
+          set -euo pipefail
+          mkdir -p k8s-rendered
+          kubectl kustomize k8s/overlays/uksouth | envsubst > k8s-rendered/manifests.yaml
+
+          echo "::group::Rendered manifests (sensitive values redacted)"
+          grep -v -i -E 'connection.?string|password' k8s-rendered/manifests.yaml
+          echo "::endgroup::"
+
+      - name: Apply manifests
+        run: kubectl apply -f k8s-rendered/manifests.yaml
+
+      - name: Wait for rollout
+        run: |
+          set -euo pipefail
+          kubectl rollout status deployment/${{ inputs.service }} \
+            --namespace ticketing \
+            --timeout=5m
+
+      - name: Verify pods are healthy
+        run: |
+          kubectl get pods -n ticketing -l app.kubernetes.io/name=${{ inputs.service }} -o wide
+          kubectl describe pods -n ticketing -l app.kubernetes.io/name=${{ inputs.service }} | tail -30

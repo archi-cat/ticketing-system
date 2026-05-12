@@ -1,0 +1,34 @@
+name: Deploy Scheduler
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/scheduler/**'
+      - 'k8s/base/scheduler/**'
+      - 'k8s/base/configmap.yaml'
+      - 'k8s/base/namespace.yaml'
+      - 'k8s/overlays/uksouth/configmap.yaml'
+      - 'k8s/overlays/uksouth/patches/scheduler-deployment.yaml'
+      - 'k8s/overlays/uksouth/patches/scheduler-serviceaccount.yaml'
+      - '.github/workflows/deploy-scheduler.yml'
+      - '.github/workflows/_deploy-common.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-scheduler
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy-common.yml
+    with:
+      service: scheduler
+      image_tag: ${{ github.sha }}
+    secrets:
+      AZURE_CLIENT_ID:         ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:         ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID:   ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_STATE_RESOURCE_GROUP: ${{ secrets.TF_STATE_RESOURCE_GROUP }}
+      TF_STATE_STORAGE_ACCOUNT: ${{ secrets.TF_STATE_STORAGE_ACCOUNT }}
+      TF_STATE_CONTAINER:      ${{ secrets.TF_STATE_CONTAINER }}
