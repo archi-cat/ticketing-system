@@ -12,28 +12,27 @@ from fastapi.responses import JSONResponse
 
 from ticketing_api.routes.schemas import ErrorResponse
 from ticketing_api.services.exceptions import (
-    ConcurrentReservationConflict,
-    EventNotFound,
-    InsufficientSeats,
-    ReservationExpired,
-    ReservationNotFound,
-    ReservationNotPending,
+    ConcurrentReservationConflictError,
+    EventNotFoundError,
+    InsufficientSeatsError,
+    ReservationExpiredError,
+    ReservationNotFoundError,
+    ReservationNotPendingError,
     TicketingError,
-    TooManySeatsRequested,
+    TooManySeatsRequestedError,
 )
-
 
 # ── Mapping table ────────────────────────────────────────────────────────────
 # exception_class → (http_status, error_code)
 
 _EXCEPTION_MAP: dict[type[TicketingError], tuple[int, str]] = {
-    EventNotFound: (404, "event_not_found"),
-    ReservationNotFound: (404, "reservation_not_found"),
-    InsufficientSeats: (409, "insufficient_seats"),
-    ConcurrentReservationConflict: (409, "concurrent_reservation_conflict"),
-    ReservationNotPending: (409, "reservation_not_pending"),
-    ReservationExpired: (410, "reservation_expired"),
-    TooManySeatsRequested: (422, "too_many_seats_requested"),
+    EventNotFoundError: (404, "event_not_found"),
+    ReservationNotFoundError: (404, "reservation_not_found"),
+    InsufficientSeatsError: (409, "insufficient_seats"),
+    ConcurrentReservationConflictError: (409, "concurrent_reservation_conflict"),
+    ReservationNotPendingError: (409, "reservation_not_pending"),
+    ReservationExpiredError: (410, "reservation_expired"),
+    TooManySeatsRequestedError: (422, "too_many_seats_requested"),
 }
 
 

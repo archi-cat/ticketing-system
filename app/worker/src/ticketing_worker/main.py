@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from typing import NoReturn
 
 import structlog
 from azure.identity.aio import DefaultAzureCredential
@@ -26,7 +25,7 @@ from ticketing_worker.health_server import HealthServer
 from ticketing_worker.infrastructure.database import Database
 from ticketing_worker.observability import configure_observability
 from ticketing_worker.runtime.consumer import Consumer
-from ticketing_worker.settings import Settings, get_settings
+from ticketing_worker.settings import get_settings
 
 logger = structlog.get_logger(__name__)
 

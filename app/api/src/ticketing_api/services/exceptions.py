@@ -5,29 +5,29 @@ class TicketingError(Exception):
     """Base class for all service-level errors."""
 
 
-class EventNotFound(TicketingError):
+class EventNotFoundError(TicketingError):
     pass
 
 
-class ReservationNotFound(TicketingError):
+class ReservationNotFoundError(TicketingError):
     pass
 
 
-class InsufficientSeats(TicketingError):
+class InsufficientSeatsError(TicketingError):
     pass
 
 
-class ReservationNotPending(TicketingError):
+class ReservationNotPendingError(TicketingError):
     """Reservation cannot be confirmed because it's already confirmed/expired."""
 
 
-class ReservationExpired(TicketingError):
+class ReservationExpiredError(TicketingError):
     pass
 
 
-class ConcurrentReservationConflict(TicketingError):
+class ConcurrentReservationConflictError(TicketingError):
     """Lock could not be acquired — another reservation in flight for this event."""
 
 
-class TooManySeatsRequested(TicketingError):
+class TooManySeatsRequestedError(TicketingError):
     pass

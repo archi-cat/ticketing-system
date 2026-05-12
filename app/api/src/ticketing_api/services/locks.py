@@ -12,8 +12,8 @@ approach is correct.
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from secrets import token_hex
 
 import structlog
@@ -33,7 +33,7 @@ end
 """
 
 
-class LockNotAcquired(Exception):
+class LockNotAcquiredError(Exception):
     """Raised when a lock cannot be acquired within the timeout."""
 
 
@@ -51,7 +51,7 @@ class DistributedLock:
 
         Raises
         ------
-        LockNotAcquired
+        LockNotAcquiredError
             If the lock is already held by another caller.
         """
         token = token_hex(16)
@@ -62,7 +62,7 @@ class DistributedLock:
             ex=ttl_seconds,
         )
         if not acquired:
-            raise LockNotAcquired(f"Could not acquire lock {key!r}")
+            raise LockNotAcquiredError(f"Could not acquire lock {key!r}")
 
         logger.debug("lock_acquired", key=key, ttl_seconds=ttl_seconds)
         try:

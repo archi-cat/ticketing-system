@@ -7,8 +7,8 @@ next step.
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -25,9 +25,8 @@ from ticketing_api.domain.models import (
 )
 from ticketing_api.main import create_app
 from ticketing_api.services.exceptions import (
-    EventNotFound,
-    InsufficientSeats,
-    TooManySeatsRequested,
+    EventNotFoundError,
+    InsufficientSeatsError,
 )
 from ticketing_api.settings import Settings
 
@@ -196,7 +195,7 @@ def test_create_reservation_success(settings, event, reservation, monkeypatch):
 
 def test_create_reservation_event_not_found(settings, event, monkeypatch):
     service = AsyncMock()
-    service.create.side_effect = EventNotFound(f"Event {event.id} not found")
+    service.create.side_effect = EventNotFoundError(f"Event {event.id} not found")
 
     client = _make_client(settings, monkeypatch, reservation_service=service)
     response = client.post(
@@ -210,7 +209,7 @@ def test_create_reservation_event_not_found(settings, event, monkeypatch):
 
 def test_create_reservation_insufficient_seats(settings, event, monkeypatch):
     service = AsyncMock()
-    service.create.side_effect = InsufficientSeats("Not enough seats")
+    service.create.side_effect = InsufficientSeatsError("Not enough seats")
 
     client = _make_client(settings, monkeypatch, reservation_service=service)
     response = client.post(

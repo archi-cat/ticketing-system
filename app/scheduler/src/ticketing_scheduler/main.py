@@ -28,7 +28,7 @@ from ticketing_scheduler.runtime.leader_election import (
     LeaderElection,
     leadership_loop,
 )
-from ticketing_scheduler.settings import Settings, get_settings
+from ticketing_scheduler.settings import get_settings
 
 logger = structlog.get_logger(__name__)
 

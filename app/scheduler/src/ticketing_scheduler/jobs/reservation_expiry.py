@@ -10,11 +10,10 @@ batch fails, the sweep skips that batch and tries again on the next tick.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select, text, update
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ticketing_scheduler.infrastructure.database import Database

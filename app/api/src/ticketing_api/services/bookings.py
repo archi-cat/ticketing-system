@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -13,9 +12,9 @@ from ticketing_api.infrastructure.servicebus import ServiceBusPublisher
 from ticketing_api.repositories.bookings import BookingsRepository
 from ticketing_api.repositories.reservations import ReservationsRepository
 from ticketing_api.services.exceptions import (
-    ReservationExpired,
-    ReservationNotFound,
-    ReservationNotPending,
+    ReservationExpiredError,
+    ReservationNotFoundError,
+    ReservationNotPendingError,
 )
 from ticketing_api.settings import Settings
 
@@ -50,10 +49,10 @@ class BookingService:
 
             reservation = await reservations_repo.get(reservation_id)
             if reservation is None:
-                raise ReservationNotFound(f"Reservation {reservation_id} not found")
+                raise ReservationNotFoundError(f"Reservation {reservation_id} not found")
 
             if reservation.is_expired:
-                raise ReservationExpired(
+                raise ReservationExpiredError(
                     f"Reservation {reservation_id} expired at "
                     f"{reservation.expires_at.isoformat()}"
                 )
@@ -66,7 +65,9 @@ class BookingService:
             if not transitioned:
                 # Either already confirmed or expired between the read above
                 # and the UPDATE here.
-                raise ReservationNotPending(f"Reservation {reservation_id} is no longer pending")
+                raise ReservationNotPendingError(
+                    f"Reservation {reservation_id} is no longer pending"
+                )
 
             booking = await bookings_repo.create(
                 reservation_id=reservation_id,

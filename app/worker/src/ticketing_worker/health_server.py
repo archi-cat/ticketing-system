@@ -10,9 +10,8 @@ else, so the worker exposes:
 
 from __future__ import annotations
 
-from aiohttp import web
-
 import structlog
+from aiohttp import web
 
 from ticketing_worker.infrastructure.database import Database
 

@@ -26,12 +26,12 @@ from ticketing_api.infrastructure.servicebus import ServiceBusPublisher
 from ticketing_api.repositories.events import EventsRepository
 from ticketing_api.repositories.reservations import ReservationsRepository
 from ticketing_api.services.exceptions import (
-    ConcurrentReservationConflict,
-    EventNotFound,
-    InsufficientSeats,
-    TooManySeatsRequested,
+    ConcurrentReservationConflictError,
+    EventNotFoundError,
+    InsufficientSeatsError,
+    TooManySeatsRequestedError,
 )
-from ticketing_api.services.locks import DistributedLock, LockNotAcquired
+from ticketing_api.services.locks import DistributedLock, LockNotAcquiredError
 from ticketing_api.settings import Settings
 
 logger = structlog.get_logger(__name__)
@@ -60,17 +60,17 @@ class ReservationService:
 
         Raises
         ------
-        TooManySeatsRequested
+        TooManySeatsRequestedError
             seat_count exceeds the per-request maximum.
-        EventNotFound
+        EventNotFoundError
             event_id does not match an existing event.
-        InsufficientSeats
+        InsufficientSeatsError
             Not enough seats available for this reservation.
-        ConcurrentReservationConflict
+        ConcurrentReservationConflictError
             Another reservation for this event is in flight; client should retry.
         """
         if seat_count > self._settings.reservation_max_seats_per_request:
-            raise TooManySeatsRequested(
+            raise TooManySeatsRequestedError(
                 f"Cannot reserve more than "
                 f"{self._settings.reservation_max_seats_per_request} seats per request"
             )
@@ -83,8 +83,8 @@ class ReservationService:
                 ttl_seconds=self._settings.reservation_lock_ttl_seconds,
             ):
                 reservation = await self._create_locked(event_id, customer_email, seat_count)
-        except LockNotAcquired as exc:
-            raise ConcurrentReservationConflict(
+        except LockNotAcquiredError as exc:
+            raise ConcurrentReservationConflictError(
                 f"Another reservation for event {event_id} is in flight"
             ) from exc
 
@@ -117,11 +117,11 @@ class ReservationService:
 
             event = await events_repo.get(event_id)
             if event is None:
-                raise EventNotFound(f"Event {event_id} not found")
+                raise EventNotFoundError(f"Event {event_id} not found")
 
             decremented = await events_repo.decrement_available_seats(event_id, seat_count)
             if not decremented:
-                raise InsufficientSeats(f"Not enough seats for event {event_id}")
+                raise InsufficientSeatsError(f"Not enough seats for event {event_id}")
 
             reservation = await reservations_repo.create(
                 event_id=event_id,

@@ -15,12 +15,12 @@ import pytest
 
 from ticketing_api.domain.models import Event, Reservation, ReservationStatus
 from ticketing_api.services.exceptions import (
-    ConcurrentReservationConflict,
-    EventNotFound,
-    InsufficientSeats,
-    TooManySeatsRequested,
+    ConcurrentReservationConflictError,
+    EventNotFoundError,
+    InsufficientSeatsError,
+    TooManySeatsRequestedError,
 )
-from ticketing_api.services.locks import LockNotAcquired
+from ticketing_api.services.locks import LockNotAcquiredError
 from ticketing_api.services.reservations import ReservationService
 from ticketing_api.settings import Settings
 
@@ -89,7 +89,7 @@ def _make_service(
 
         @asynccontextmanager
         async def _bad_lock(*_args, **_kwargs):
-            raise LockNotAcquired("contention")
+            raise LockNotAcquiredError("contention")
             yield  # unreachable
 
         lock.acquire = _bad_lock
@@ -138,26 +138,26 @@ async def test_create_publishes_event_after_commit(
 @pytest.mark.asyncio
 async def test_too_many_seats_raises(settings: Settings):
     service, _ = _make_service(settings)
-    with pytest.raises(TooManySeatsRequested):
+    with pytest.raises(TooManySeatsRequestedError):
         await service.create(uuid4(), "alice@example.com", 999)
 
 
 @pytest.mark.asyncio
 async def test_event_not_found_raises(settings: Settings):
     service, _ = _make_service(settings, event=None)
-    with pytest.raises(EventNotFound):
+    with pytest.raises(EventNotFoundError):
         await service.create(uuid4(), "alice@example.com", 2)
 
 
 @pytest.mark.asyncio
 async def test_insufficient_seats_raises(settings: Settings, event: Event):
     service, _ = _make_service(settings, event=event, decrement_returns=False)
-    with pytest.raises(InsufficientSeats):
+    with pytest.raises(InsufficientSeatsError):
         await service.create(event.id, "alice@example.com", 2)
 
 
 @pytest.mark.asyncio
 async def test_lock_contention_raises(settings: Settings):
     service, _ = _make_service(settings, lock_acquires=False)
-    with pytest.raises(ConcurrentReservationConflict):
+    with pytest.raises(ConcurrentReservationConflictError):
         await service.create(uuid4(), "alice@example.com", 2)
