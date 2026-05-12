@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
 
 import asyncpg
 import structlog
@@ -119,8 +118,7 @@ class Database:
             pool_pre_ping=True,
             pool_size=self._settings.postgres_pool_min_size,
             max_overflow=(
-                self._settings.postgres_pool_max_size
-                - self._settings.postgres_pool_min_size
+                self._settings.postgres_pool_max_size - self._settings.postgres_pool_min_size
             ),
         )
 
@@ -157,8 +155,7 @@ class Database:
             pool_pre_ping=True,
             pool_size=self._settings.postgres_pool_min_size,
             max_overflow=(
-                self._settings.postgres_pool_max_size
-                - self._settings.postgres_pool_min_size
+                self._settings.postgres_pool_max_size - self._settings.postgres_pool_min_size
             ),
         )
 

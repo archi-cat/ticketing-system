@@ -7,40 +7,53 @@ distinct from the human-readable message.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from ticketing_api.routes.schemas import ErrorResponse
 from ticketing_api.services.exceptions import (
-    ConcurrentReservationConflict,
-    EventNotFound,
-    InsufficientSeats,
-    ReservationExpired,
-    ReservationNotFound,
-    ReservationNotPending,
+    ConcurrentReservationConflictError,
+    EventNotFoundError,
+    InsufficientSeatsError,
+    ReservationExpiredError,
+    ReservationNotFoundError,
+    ReservationNotPendingError,
     TicketingError,
-    TooManySeatsRequested,
+    TooManySeatsRequestedError,
 )
-
 
 # ── Mapping table ────────────────────────────────────────────────────────────
 # exception_class → (http_status, error_code)
 
 _EXCEPTION_MAP: dict[type[TicketingError], tuple[int, str]] = {
-    EventNotFound: (404, "event_not_found"),
-    ReservationNotFound: (404, "reservation_not_found"),
-    InsufficientSeats: (409, "insufficient_seats"),
-    ConcurrentReservationConflict: (409, "concurrent_reservation_conflict"),
-    ReservationNotPending: (409, "reservation_not_pending"),
-    ReservationExpired: (410, "reservation_expired"),
-    TooManySeatsRequested: (422, "too_many_seats_requested"),
+    EventNotFoundError: (404, "event_not_found"),
+    ReservationNotFoundError: (404, "reservation_not_found"),
+    InsufficientSeatsError: (409, "insufficient_seats"),
+    ConcurrentReservationConflictError: (409, "concurrent_reservation_conflict"),
+    ReservationNotPendingError: (409, "reservation_not_pending"),
+    ReservationExpiredError: (410, "reservation_expired"),
+    TooManySeatsRequestedError: (422, "too_many_seats_requested"),
 }
 
 
-def _handler(exc_class: type[TicketingError]) -> callable:
+def _handler(
+    exc_class: type[TicketingError],
+) -> Callable[[Request, Exception], Response | Awaitable[Response]]:
+    """Build a Starlette-compatible exception handler for one exception class.
+
+    The signature accepts the general Exception type because that's what
+    Starlette's add_exception_handler expects. We assert and narrow at
+    runtime — FastAPI guarantees the exception matches the registered class
+    when it dispatches, so the assertion never fires in practice.
+    """
     status, error_code = _EXCEPTION_MAP[exc_class]
 
-    async def handle(_request: Request, exc: TicketingError) -> JSONResponse:
+    async def handle(_request: Request, exc: Exception) -> Response:
+        assert isinstance(
+            exc, TicketingError
+        ), f"Handler for {exc_class.__name__} received {type(exc).__name__}"
         return JSONResponse(
             status_code=status,
             content=ErrorResponse(

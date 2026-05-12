@@ -20,7 +20,7 @@ extend a lease we don't actually hold.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from secrets import token_hex
 
@@ -55,7 +55,7 @@ class LeaderElection:
 
     def __init__(
         self,
-        redis: Redis,
+        redis: Redis[str],
         lock_key: str,
         lease_ttl_seconds: int,
         renew_interval_seconds: int,
@@ -95,7 +95,7 @@ class LeaderElection:
         if self._token is None:
             return False
 
-        result = await self._redis.eval(
+        result = await self._redis.eval(  # type: ignore[no-untyped-call]
             _RENEW_SCRIPT,
             1,
             self._lock_key,
@@ -122,7 +122,7 @@ class LeaderElection:
             return
 
         try:
-            await self._redis.eval(
+            await self._redis.eval(  # type: ignore[no-untyped-call]
                 _RELEASE_SCRIPT, 1, self._lock_key, self._token
             )
             logger.info("leader_released", lock_key=self._lock_key)
@@ -141,7 +141,7 @@ async def leadership_loop(
     election: LeaderElection,
     *,
     acquisition_retry_seconds: int,
-) -> AsyncIterator[Callable[[], Awaitable[bool]]]:
+) -> AsyncIterator[Callable[[], bool]]:
     """Drive the leader election lifecycle.
 
     Yields a callable ``is_leader()`` that returns True if we are currently

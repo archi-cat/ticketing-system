@@ -1,7 +1,7 @@
 """FastAPI application factory."""
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
@@ -121,21 +121,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         # Service Bus — check is "is_enabled and not closed". We deliberately
         # don't send a real message — Service Bus has no cheap ping equivalent.
-        results["servicebus"] = (
-            "ok" if app.state.servicebus.is_enabled else "disabled"
-        )
+        results["servicebus"] = "ok" if app.state.servicebus.is_enabled else "disabled"
 
         if any(v.startswith("error") for v in results.values()):
             raise HTTPException(status_code=503, detail={"checks": results})
         return {"checks": results}
-    
+
     # Backwards-compat alias
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:
         return {"status": "ok"}
-    
+
     # Mount domain routes
     from ticketing_api.routes import register_routes
+
     register_routes(app)
 
     return app

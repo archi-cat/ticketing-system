@@ -28,7 +28,7 @@ from ticketing_scheduler.runtime.leader_election import (
     LeaderElection,
     leadership_loop,
 )
-from ticketing_scheduler.settings import Settings, get_settings
+from ticketing_scheduler.settings import get_settings
 
 logger = structlog.get_logger(__name__)
 
@@ -62,9 +62,7 @@ async def run() -> None:
         renew_interval_seconds=settings.leader_renew_interval_seconds,
     )
 
-    sweeper = ReservationExpirySweeper(
-        database, batch_size=settings.expiry_sweep_batch_size
-    )
+    sweeper = ReservationExpirySweeper(database, batch_size=settings.expiry_sweep_batch_size)
 
     # ── APScheduler ──────────────────────────────────────────────────────────
     aps = AsyncIOScheduler()

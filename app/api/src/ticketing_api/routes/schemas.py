@@ -19,7 +19,6 @@ from ticketing_api.domain.models import (
     ReservationStatus,
 )
 
-
 # ── Event schemas ────────────────────────────────────────────────────────────
 
 
@@ -35,7 +34,7 @@ class EventResponse(BaseModel):
     price_pence: int
 
     @classmethod
-    def from_domain(cls, event: Event) -> "EventResponse":
+    def from_domain(cls, event: Event) -> EventResponse:
         return cls(
             id=event.id,
             name=event.name,
@@ -73,7 +72,7 @@ class ReservationResponse(BaseModel):
     created_at: datetime
 
     @classmethod
-    def from_domain(cls, reservation: Reservation) -> "ReservationResponse":
+    def from_domain(cls, reservation: Reservation) -> ReservationResponse:
         return cls(
             id=reservation.id,
             event_id=reservation.event_id,
@@ -106,7 +105,7 @@ class BookingResponse(BaseModel):
     confirmed_at: datetime
 
     @classmethod
-    def from_domain(cls, booking: Booking) -> "BookingResponse":
+    def from_domain(cls, booking: Booking) -> BookingResponse:
         return cls(
             id=booking.id,
             reservation_id=booking.reservation_id,

@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     redis_use_tls: bool = False
     redis_password: SecretStr | None = None
-    redis_keyvault_secret_name: str = "redis-primary-key"
+    redis_keyvault_secret_name: str = "redis-primary-key"  # noqa: S105 — this is the secret's NAME, not the value
 
     # ── Service Bus ───────────────────────────────────────────────────────────
     # Local development uses a docker-compose Service Bus emulator or skips

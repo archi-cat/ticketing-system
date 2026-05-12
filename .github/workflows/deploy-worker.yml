@@ -1,0 +1,34 @@
+name: Deploy Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/worker/**'
+      - 'k8s/base/worker/**'
+      - 'k8s/base/configmap.yaml'
+      - 'k8s/base/namespace.yaml'
+      - 'k8s/overlays/uksouth/configmap.yaml'
+      - 'k8s/overlays/uksouth/patches/worker-deployment.yaml'
+      - 'k8s/overlays/uksouth/patches/worker-serviceaccount.yaml'
+      - '.github/workflows/deploy-worker.yml'
+      - '.github/workflows/_deploy-common.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy-common.yml
+    with:
+      service: worker
+      image_tag: ${{ github.sha }}
+    secrets:
+      AZURE_CLIENT_ID:         ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID:         ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID:   ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_STATE_RESOURCE_GROUP: ${{ secrets.TF_STATE_RESOURCE_GROUP }}
+      TF_STATE_STORAGE_ACCOUNT: ${{ secrets.TF_STATE_STORAGE_ACCOUNT }}
+      TF_STATE_CONTAINER:      ${{ secrets.TF_STATE_CONTAINER }}

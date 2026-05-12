@@ -63,10 +63,7 @@ class Reservation(BaseModel):
 
     @property
     def is_expired(self) -> bool:
-        return (
-            self.status == ReservationStatus.PENDING
-            and datetime.now(UTC) >= self.expires_at
-        )
+        return self.status == ReservationStatus.PENDING and datetime.now(UTC) >= self.expires_at
 
 
 # ── Booking ──────────────────────────────────────────────────────────────────

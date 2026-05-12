@@ -23,9 +23,7 @@ class BookingsRepository:
         return _to_domain(row) if row else None
 
     async def get_by_reservation(self, reservation_id: UUID) -> Booking | None:
-        stmt = select(BookingORM).where(
-            BookingORM.reservation_id == reservation_id
-        )
+        stmt = select(BookingORM).where(BookingORM.reservation_id == reservation_id)
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
         return _to_domain(row) if row else None

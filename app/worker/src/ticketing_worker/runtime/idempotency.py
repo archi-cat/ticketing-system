@@ -33,7 +33,7 @@ async def record_message_processed(session: AsyncSession, message_id: str) -> bo
         "ON CONFLICT (message_id) DO NOTHING"
     )
     result = await session.execute(stmt, {"message_id": message_id})
-    inserted = result.rowcount > 0
+    inserted = result.rowcount > 0  # type: ignore[attr-defined]
     if not inserted:
         logger.info("message_already_processed", message_id=message_id)
     return inserted

@@ -26,10 +26,10 @@ class RedisClient:
     def __init__(self, settings: Settings, keyvault: KeyVaultClient) -> None:
         self._settings = settings
         self._keyvault = keyvault
-        self._client: Redis | None = None
+        self._client: Redis[str] | None = None
 
     @property
-    def client(self) -> Redis:
+    def client(self) -> Redis[str]:
         """Return the underlying SDK client. Raises if not started."""
         if self._client is None:
             raise RuntimeError("RedisClient.startup() has not been called yet")
@@ -68,7 +68,7 @@ class RedisClient:
     async def shutdown(self) -> None:
         """Close the connection pool."""
         if self._client is not None:
-            await self._client.aclose()
+            await self._client.aclose()  # type: ignore[attr-defined]
             self._client = None
         logger.info("redis_stopped")
 
@@ -76,9 +76,7 @@ class RedisClient:
         """Return the Redis password, fetching from Key Vault if applicable."""
         if self._keyvault.is_enabled:
             logger.info("redis_fetching_password_from_keyvault")
-            return await self._keyvault.get_secret(
-                self._settings.redis_keyvault_secret_name
-            )
+            return await self._keyvault.get_secret(self._settings.redis_keyvault_secret_name)
 
         if self._settings.redis_password is not None:
             return self._settings.redis_password.get_secret_value()

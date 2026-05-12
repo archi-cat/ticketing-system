@@ -12,8 +12,8 @@ approach is correct.
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from secrets import token_hex
 
 import structlog
@@ -33,12 +33,12 @@ end
 """
 
 
-class LockNotAcquired(Exception):
+class LockNotAcquiredError(Exception):
     """Raised when a lock cannot be acquired within the timeout."""
 
 
 class DistributedLock:
-    def __init__(self, redis: Redis) -> None:
+    def __init__(self, redis: Redis[str]) -> None:
         self._redis = redis
 
     @asynccontextmanager
@@ -51,7 +51,7 @@ class DistributedLock:
 
         Raises
         ------
-        LockNotAcquired
+        LockNotAcquiredError
             If the lock is already held by another caller.
         """
         token = token_hex(16)
@@ -62,7 +62,7 @@ class DistributedLock:
             ex=ttl_seconds,
         )
         if not acquired:
-            raise LockNotAcquired(f"Could not acquire lock {key!r}")
+            raise LockNotAcquiredError(f"Could not acquire lock {key!r}")
 
         logger.debug("lock_acquired", key=key, ttl_seconds=ttl_seconds)
         try:
@@ -71,7 +71,9 @@ class DistributedLock:
             # Compare-and-delete via Lua so we only release our own lock.
             # If the TTL expired and someone else now holds the key, we leave
             # theirs alone.
-            released = await self._redis.eval(_RELEASE_SCRIPT, 1, key, token)
+            released = await self._redis.eval(  # type: ignore[no-untyped-call]
+                _RELEASE_SCRIPT, 1, key, token
+            )
             if released:
                 logger.debug("lock_released", key=key)
             else:

@@ -21,9 +21,7 @@ async def list_upcoming_events(request: Request) -> EventListResponse:
         repo = EventsRepository(session)
         events = await repo.list_upcoming()
 
-    return EventListResponse(
-        items=[EventResponse.from_domain(e) for e in events]
-    )
+    return EventListResponse(items=[EventResponse.from_domain(e) for e in events])
 
 
 @router.get("/{event_id}", response_model=EventResponse)

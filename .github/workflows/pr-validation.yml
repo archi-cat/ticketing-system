@@ -1,0 +1,139 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'k8s/**'
+      - 'terraform/**'
+      - '.github/workflows/**'
+
+# Cancel previous runs when a new commit is pushed to the same PR
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ── Python services ─────────────────────────────────────────────────────────
+  python:
+    name: Python — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api, worker, scheduler]
+    defaults:
+      run:
+        working-directory: app/${{ matrix.service }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.5.13"
+          enable-cache: true
+          cache-dependency-glob: app/${{ matrix.service }}/uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Mypy
+        run: uv run mypy src
+
+      - name: Pytest
+        run: uv run pytest --tb=short
+
+  # ── Kustomize manifests ─────────────────────────────────────────────────────
+  kustomize:
+    name: Kustomize build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.32.0"
+
+      - name: Build overlays
+        run: |
+          set -euo pipefail
+          for overlay in k8s/overlays/*/; do
+            echo "==> Building $overlay"
+            kubectl kustomize "$overlay" > /dev/null
+          done
+
+  # ── Terraform — runs against all environment compositions ───────────────────
+  terraform:
+    name: Terraform fmt + validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+
+      - name: Validate each environment
+        run: |
+          set -euo pipefail
+          for env_dir in terraform/environments/*/; do
+            echo "==> Validating $env_dir"
+            (
+              cd "$env_dir"
+              terraform init -backend=false -input=false
+              terraform validate
+            )
+          done
+
+      - name: Validate each module
+        run: |
+          set -euo pipefail
+          for module_dir in terraform/modules/*/ terraform/modules/data/*/; do
+            [ -d "$module_dir" ] || continue
+            echo "==> Validating $module_dir"
+            (
+              cd "$module_dir"
+              terraform init -backend=false -input=false
+              terraform validate
+            )
+          done
+
+      - name: Validate shared resources
+        run: |
+          set -euo pipefail
+          for shared_dir in terraform/shared/*/; do
+            echo "==> Validating $shared_dir"
+            (
+              cd "$shared_dir"
+              terraform init -backend=false -input=false
+              terraform validate
+            )
+          done

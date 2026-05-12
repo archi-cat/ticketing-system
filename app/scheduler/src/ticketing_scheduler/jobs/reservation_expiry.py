@@ -10,11 +10,10 @@ batch fails, the sweep skips that batch and tries again on the next tick.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
-from sqlalchemy import select, text, update
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ticketing_scheduler.infrastructure.database import Database
@@ -64,9 +63,7 @@ class ReservationExpirySweeper:
             FOR UPDATE SKIP LOCKED
             """
         )
-        rows = (
-            await session.execute(find_stmt, {"batch_size": self._batch_size})
-        ).all()
+        rows = (await session.execute(find_stmt, {"batch_size": self._batch_size})).all()
 
         if not rows:
             return 0
@@ -92,7 +89,7 @@ class ReservationExpirySweeper:
                 transition_stmt, {"reservation_id": reservation_id}
             )
 
-            if transition_result.rowcount == 0:
+            if transition_result.rowcount == 0:  # type: ignore[attr-defined]
                 # Race lost — someone else just confirmed it. Skip.
                 logger.warning(
                     "reservation_transition_skipped",

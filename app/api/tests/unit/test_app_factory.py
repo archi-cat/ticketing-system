@@ -1,7 +1,7 @@
 """Test that create_app() produces a working FastAPI application."""
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
