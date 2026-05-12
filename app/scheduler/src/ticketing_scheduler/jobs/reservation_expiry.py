@@ -89,7 +89,7 @@ class ReservationExpirySweeper:
                 transition_stmt, {"reservation_id": reservation_id}
             )
 
-            if transition_result.rowcount == 0:
+            if transition_result.rowcount == 0:  # type: ignore[attr-defined]
                 # Race lost — someone else just confirmed it. Skip.
                 logger.warning(
                     "reservation_transition_skipped",

@@ -7,8 +7,10 @@ distinct from the human-readable message.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from ticketing_api.routes.schemas import ErrorResponse
 from ticketing_api.services.exceptions import (
@@ -36,10 +38,22 @@ _EXCEPTION_MAP: dict[type[TicketingError], tuple[int, str]] = {
 }
 
 
-def _handler(exc_class: type[TicketingError]) -> callable:
+def _handler(
+    exc_class: type[TicketingError],
+) -> Callable[[Request, Exception], Response | Awaitable[Response]]:
+    """Build a Starlette-compatible exception handler for one exception class.
+
+    The signature accepts the general Exception type because that's what
+    Starlette's add_exception_handler expects. We assert and narrow at
+    runtime — FastAPI guarantees the exception matches the registered class
+    when it dispatches, so the assertion never fires in practice.
+    """
     status, error_code = _EXCEPTION_MAP[exc_class]
 
-    async def handle(_request: Request, exc: TicketingError) -> JSONResponse:
+    async def handle(_request: Request, exc: Exception) -> Response:
+        assert isinstance(exc, TicketingError), (
+            f"Handler for {exc_class.__name__} received {type(exc).__name__}"
+        )
         return JSONResponse(
             status_code=status,
             content=ErrorResponse(

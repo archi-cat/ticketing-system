@@ -18,10 +18,10 @@ logger = structlog.get_logger(__name__)
 class RedisClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._client: Redis | None = None
+        self._client: Redis[str] | None = None
 
     @property
-    def client(self) -> Redis:
+    def client(self) -> Redis[str]:
         if self._client is None:
             raise RuntimeError("RedisClient.startup() has not been called")
         return self._client
@@ -55,6 +55,6 @@ class RedisClient:
 
     async def shutdown(self) -> None:
         if self._client is not None:
-            await self._client.aclose()
+            await self._client.aclose()  # type: ignore[attr-defined]
             self._client = None
         logger.info("redis_stopped")

@@ -38,7 +38,7 @@ class LockNotAcquiredError(Exception):
 
 
 class DistributedLock:
-    def __init__(self, redis: Redis) -> None:
+    def __init__(self, redis: Redis[str]) -> None:
         self._redis = redis
 
     @asynccontextmanager
@@ -71,7 +71,9 @@ class DistributedLock:
             # Compare-and-delete via Lua so we only release our own lock.
             # If the TTL expired and someone else now holds the key, we leave
             # theirs alone.
-            released = await self._redis.eval(_RELEASE_SCRIPT, 1, key, token)
+            released = await self._redis.eval(  # type: ignore[no-untyped-call]
+                _RELEASE_SCRIPT, 1, key, token
+            )
             if released:
                 logger.debug("lock_released", key=key)
             else:
