@@ -37,9 +37,7 @@ class EventsRepository:
         result = await self._session.execute(stmt)
         return [_to_domain(row) for row in result.scalars()]
 
-    async def decrement_available_seats(
-        self, event_id: UUID, seat_count: int
-    ) -> bool:
+    async def decrement_available_seats(self, event_id: UUID, seat_count: int) -> bool:
         """Atomically decrement available seats. Returns False if insufficient.
 
         Uses a conditional UPDATE so the check and decrement happen in a single
@@ -58,9 +56,7 @@ class EventsRepository:
         result = await self._session.execute(stmt)
         return result.rowcount > 0
 
-    async def increment_available_seats(
-        self, event_id: UUID, seat_count: int
-    ) -> None:
+    async def increment_available_seats(self, event_id: UUID, seat_count: int) -> None:
         """Release seats back to the pool (used on reservation expiry)."""
         from sqlalchemy import update
 

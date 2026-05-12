@@ -62,9 +62,7 @@ async def run() -> None:
         renew_interval_seconds=settings.leader_renew_interval_seconds,
     )
 
-    sweeper = ReservationExpirySweeper(
-        database, batch_size=settings.expiry_sweep_batch_size
-    )
+    sweeper = ReservationExpirySweeper(database, batch_size=settings.expiry_sweep_batch_size)
 
     # ── APScheduler ──────────────────────────────────────────────────────────
     aps = AsyncIOScheduler()

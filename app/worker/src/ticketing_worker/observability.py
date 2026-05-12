@@ -32,9 +32,7 @@ def _configure_logging(settings: Settings) -> None:
 
     structlog.configure(
         processors=[*shared_processors, structlog.processors.format_exc_info, renderer],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, settings.log_level)
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, settings.log_level)),
         logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
         cache_logger_on_first_use=True,
     )

@@ -104,9 +104,7 @@ class Consumer:
                     continue
 
                 # Process messages concurrently within the batch
-                await asyncio.gather(
-                    *[self._process_message(receiver, m) for m in messages]
-                )
+                await asyncio.gather(*[self._process_message(receiver, m) for m in messages])
 
         logger.info(
             "consumer_stopped",

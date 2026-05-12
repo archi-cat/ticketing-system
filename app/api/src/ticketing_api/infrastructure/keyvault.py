@@ -65,9 +65,7 @@ class KeyVaultClient:
             If Key Vault is disabled (no URI configured).
         """
         if self._client is None:
-            raise RuntimeError(
-                "Key Vault is not configured. Set KEYVAULT_URI to enable."
-            )
+            raise RuntimeError("Key Vault is not configured. Set KEYVAULT_URI to enable.")
 
         secret = await self._client.get_secret(name)
         if secret.value is None:

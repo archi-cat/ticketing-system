@@ -42,11 +42,7 @@ def _build_url(settings) -> str:
             f"{settings.postgres_database}"
         )
 
-    password = (
-        settings.postgres_password.get_secret_value()
-        if settings.postgres_password
-        else ""
-    )
+    password = settings.postgres_password.get_secret_value() if settings.postgres_password else ""
     return (
         f"postgresql+asyncpg://"
         f"{settings.postgres_user}:{password}@"
@@ -65,9 +61,7 @@ async def _create_workload_identity_connection() -> asyncpg.Connection:
 
     settings = get_settings()
     async with DefaultAzureCredential() as credential:
-        token = await credential.get_token(
-            "https://ossrdbms-aad.database.windows.net/.default"
-        )
+        token = await credential.get_token("https://ossrdbms-aad.database.windows.net/.default")
     return await asyncpg.connect(
         user=settings.postgres_user,
         password=token.token,

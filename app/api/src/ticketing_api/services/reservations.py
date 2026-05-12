@@ -82,9 +82,7 @@ class ReservationService:
                 lock_key,
                 ttl_seconds=self._settings.reservation_lock_ttl_seconds,
             ):
-                reservation = await self._create_locked(
-                    event_id, customer_email, seat_count
-                )
+                reservation = await self._create_locked(event_id, customer_email, seat_count)
         except LockNotAcquired as exc:
             raise ConcurrentReservationConflict(
                 f"Another reservation for event {event_id} is in flight"
@@ -121,13 +119,9 @@ class ReservationService:
             if event is None:
                 raise EventNotFound(f"Event {event_id} not found")
 
-            decremented = await events_repo.decrement_available_seats(
-                event_id, seat_count
-            )
+            decremented = await events_repo.decrement_available_seats(event_id, seat_count)
             if not decremented:
-                raise InsufficientSeats(
-                    f"Not enough seats for event {event_id}"
-                )
+                raise InsufficientSeats(f"Not enough seats for event {event_id}")
 
             reservation = await reservations_repo.create(
                 event_id=event_id,

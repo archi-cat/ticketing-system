@@ -112,12 +112,14 @@ def _make_client(
 
     if events_repo is not None:
         from ticketing_api.routes import events as events_route_module
+
         monkeypatch.setattr(
             events_route_module, "EventsRepository", MagicMock(return_value=events_repo)
         )
 
     if reservations_repo is not None:
         from ticketing_api.routes import reservations as reservations_route_module
+
         monkeypatch.setattr(
             reservations_route_module,
             "ReservationsRepository",
@@ -126,6 +128,7 @@ def _make_client(
 
     if bookings_repo is not None:
         from ticketing_api.routes import bookings as bookings_route_module
+
         monkeypatch.setattr(
             bookings_route_module,
             "BookingsRepository",
@@ -253,9 +256,7 @@ def test_create_reservation_rejects_unknown_fields(settings, event, monkeypatch)
 # ── Bookings ─────────────────────────────────────────────────────────────────
 
 
-def test_confirm_reservation_success(
-    settings, reservation, booking, monkeypatch
-):
+def test_confirm_reservation_success(settings, reservation, booking, monkeypatch):
     service = AsyncMock()
     service.confirm.return_value = booking
 
@@ -269,9 +270,7 @@ def test_confirm_reservation_success(
     assert response.json()["id"] == str(booking.id)
 
 
-def test_confirm_reservation_validates_card_format(
-    settings, reservation, monkeypatch
-):
+def test_confirm_reservation_validates_card_format(settings, reservation, monkeypatch):
     """Card number that's not 4 digits is rejected by the schema."""
     service = AsyncMock()
 

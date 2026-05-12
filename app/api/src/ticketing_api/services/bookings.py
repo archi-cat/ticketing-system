@@ -50,9 +50,7 @@ class BookingService:
 
             reservation = await reservations_repo.get(reservation_id)
             if reservation is None:
-                raise ReservationNotFound(
-                    f"Reservation {reservation_id} not found"
-                )
+                raise ReservationNotFound(f"Reservation {reservation_id} not found")
 
             if reservation.is_expired:
                 raise ReservationExpired(
@@ -68,9 +66,7 @@ class BookingService:
             if not transitioned:
                 # Either already confirmed or expired between the read above
                 # and the UPDATE here.
-                raise ReservationNotPending(
-                    f"Reservation {reservation_id} is no longer pending"
-                )
+                raise ReservationNotPending(f"Reservation {reservation_id} is no longer pending")
 
             booking = await bookings_repo.create(
                 reservation_id=reservation_id,

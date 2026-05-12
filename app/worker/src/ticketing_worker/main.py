@@ -46,9 +46,7 @@ async def run() -> None:
     database = Database(settings)
     await database.startup()
 
-    health_server = HealthServer(
-        database, host=settings.health_host, port=settings.health_port
-    )
+    health_server = HealthServer(database, host=settings.health_host, port=settings.health_port)
     await health_server.startup()
 
     if not settings.servicebus_use_workload_identity:

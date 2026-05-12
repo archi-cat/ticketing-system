@@ -64,9 +64,7 @@ class ReservationExpirySweeper:
             FOR UPDATE SKIP LOCKED
             """
         )
-        rows = (
-            await session.execute(find_stmt, {"batch_size": self._batch_size})
-        ).all()
+        rows = (await session.execute(find_stmt, {"batch_size": self._batch_size})).all()
 
         if not rows:
             return 0

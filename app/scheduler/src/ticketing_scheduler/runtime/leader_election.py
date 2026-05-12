@@ -122,9 +122,7 @@ class LeaderElection:
             return
 
         try:
-            await self._redis.eval(
-                _RELEASE_SCRIPT, 1, self._lock_key, self._token
-            )
+            await self._redis.eval(_RELEASE_SCRIPT, 1, self._lock_key, self._token)
             logger.info("leader_released", lock_key=self._lock_key)
         except RedisError as exc:
             logger.warning(

@@ -76,9 +76,7 @@ class RedisClient:
         """Return the Redis password, fetching from Key Vault if applicable."""
         if self._keyvault.is_enabled:
             logger.info("redis_fetching_password_from_keyvault")
-            return await self._keyvault.get_secret(
-                self._settings.redis_keyvault_secret_name
-            )
+            return await self._keyvault.get_secret(self._settings.redis_keyvault_secret_name)
 
         if self._settings.redis_password is not None:
             return self._settings.redis_password.get_secret_value()
