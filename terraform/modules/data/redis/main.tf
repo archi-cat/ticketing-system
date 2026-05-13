@@ -77,7 +77,7 @@ resource "azurerm_private_endpoint" "redis" {
 # on AMR.
 
 resource "azurerm_monitor_diagnostic_setting" "redis" {
-  count = var.log_analytics_workspace_id == null ? 0 : 1
+  count = var.diagnostic_settings_enabled ? 1 : 0
 
   name                       = "diag-${var.name}"
   target_resource_id         = azurerm_managed_redis.main.id
@@ -89,5 +89,12 @@ resource "azurerm_monitor_diagnostic_setting" "redis" {
 
   metric {
     category = "AllMetrics"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = !var.diagnostic_settings_enabled || var.log_analytics_workspace_id != null
+      error_message = "log_analytics_workspace_id must be set when diagnostic_settings_enabled is true."
+    }
   }
 }

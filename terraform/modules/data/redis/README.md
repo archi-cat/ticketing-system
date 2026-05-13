@@ -73,9 +73,8 @@ settings, but they apply nonetheless.
 
 ## Observability
 
-If `log_analytics_workspace_id` is supplied, the module creates an
-`azurerm_monitor_diagnostic_setting` that streams two things to the
-workspace:
+By default the module creates an `azurerm_monitor_diagnostic_setting`
+that streams two things to a Log Analytics workspace:
 
 - **`ConnectionEvents`** — every authenticate / disconnect event, with
   the calling principal. This is the AMR equivalent of the old service's
@@ -94,8 +93,10 @@ REDConnectionEvents
 | order by TimeGenerated desc
 \```
 
-Set the variable to `null` (the default) to skip diagnostic setting
-creation — useful for tests or out-of-band investigation environments.
+Set `diagnostic_settings_enabled = false` to skip the diagnostic setting
+(useful for tests or out-of-band investigation environments). When
+enabled, `log_analytics_workspace_id` is required — a precondition
+enforces this at plan time.
 
 ## Usage
 

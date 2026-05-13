@@ -65,9 +65,16 @@ variable "consumer_object_ids" {
   default     = {}
 }
 
+variable "diagnostic_settings_enabled" {
+  description = "Whether to create the diagnostic setting that streams to Log Analytics."
+  type        = bool
+  default     = true
+}
+
 variable "log_analytics_workspace_id" {
   description = "Log Analytics workspace ID for diagnostic settings"
   type        = string
+  default     = null
 }
 
 variable "tags" {
