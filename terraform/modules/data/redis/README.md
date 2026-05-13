@@ -73,15 +73,18 @@ settings, but they apply nonetheless.
 
 ## Observability
 
-By default the module creates an `azurerm_monitor_diagnostic_setting`
-that streams two things to a Log Analytics workspace:
+When `diagnostic_settings_enabled = true` (the default), the module creates
+two diagnostic settings — Azure Managed Redis splits its diagnostic data
+across the cache resource and its child database resource:
 
-- **`ConnectionEvents`** — every authenticate / disconnect event, with
-  the calling principal. This is the AMR equivalent of the old service's
-  `ConnectedClientList` (which doesn't exist for AMR — same observability
-  capability, different category name).
-- **`AllMetrics`** — built-in metrics including server load, connections
-  per second, cache hits/misses, evictions, and used memory.
+| Diagnostic setting | Target | Category |
+|---|---|---|
+| `diag-metrics-<name>` | Cache resource | `AllMetrics` |
+| `diag-logs-<name>` | `<cache>/databases/default` | `ConnectionEvents` log |
+
+Microsoft splits the two because cache-level metrics (server load, memory,
+hit rates) and database-level connection events live on different ARM
+resource types. Both stream to the same Log Analytics workspace.
 
 The connection events land in the `REDConnectionEvents` table in Log
 Analytics. To query recent connection failures:
@@ -93,7 +96,7 @@ REDConnectionEvents
 | order by TimeGenerated desc
 \```
 
-Set `diagnostic_settings_enabled = false` to skip the diagnostic setting
+Set `diagnostic_settings_enabled = false` to skip both diagnostic settings
 (useful for tests or out-of-band investigation environments). When
 enabled, `log_analytics_workspace_id` is required — a precondition
 enforces this at plan time.
