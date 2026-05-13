@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_use_tls: bool = False
+    redis_use_entra_id: bool = False
+    redis_username: str = ""
     redis_password: SecretStr | None = None
 
     # ── Leader election ───────────────────────────────────────────────────────

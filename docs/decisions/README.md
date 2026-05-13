@@ -25,11 +25,12 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 | [0005](0005-aks-cluster-design.md) | AKS cluster design — node pools, Cilium, Azure CNI Overlay | Accepted |
 | [0006](0006-observability-design.md) | Observability — single workspace, split App Insights | Accepted |
 | [0007](0007-postgres-design.md) | PostgreSQL — Flexible Server with VNet injection, AAD-only auth | Accepted |
-| [0008](0008-redis-design.md) | Redis — Premium with Private Endpoint, access-key auth via Key Vault | Accepted |
+| [0008](0008-redis-design.md) | Redis — Premium with Private Endpoint, access-key auth via Key Vault | Superseded |
 | [0009](0009-servicebus-design.md) | Service Bus — Premium with Private Endpoint, SAS auth disabled | Accepted |
 | [0010](0010-keyvault-design.md) | Key Vault — RBAC mode, Private Endpoint, purge protection on | Accepted |
 | [0011](0011-kustomize-manifest-structure.md) | Kubernetes manifests with Kustomize — base + per-region overlays | Accepted |
 | [0012](0012-deploy-pipeline-design.md) | Deploy pipeline — per-service workflows with reusable common workflow | Accepted |
+| [0013](0013-managed-redis-migration.md) | Migrate from Azure Cache for Redis to Azure Managed Redis | Accepted (supersedes 0008) |
 
 | [0003](0003-use-fastapi.md) | Use FastAPI for the HTTP API | Accepted |
 | [0004](0004-use-sqlalchemy-async.md) | Use SQLAlchemy 2.0 async with Alembic | Accepted |

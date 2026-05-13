@@ -1,53 +1,68 @@
+variable "name" {
+  description = "Name of the Managed Redis instance."
+  type        = string
+
+  validation {
+    condition     = length(var.name) >= 1 && length(var.name) <= 63
+    error_message = "name must be between 1 and 63 characters."
+  }
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$", var.name))
+    error_message = "name must contain only letters, digits, and hyphens, and must start and end with a letter or digit."
+  }
+
+  validation {
+    condition     = !can(regex("--", var.name))
+    error_message = "name must not contain consecutive hyphens."
+  }
+}
+
 variable "location" {
-  description = "Azure region"
+  description = "Azure region."
   type        = string
 }
 
 variable "resource_group_name" {
-  description = "Resource group for the Redis cache"
+  description = "Name of the resource group."
   type        = string
-}
-
-variable "cache_name" {
-  description = "Redis cache name (globally unique, lowercase alphanumeric and hyphens, 1-63 chars)"
-  type        = string
-
-  validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$", var.cache_name))
-    error_message = "Cache name must be 1-63 chars, lowercase alphanumeric and hyphens, starting and ending with alphanumeric."
-  }
 }
 
 variable "sku_name" {
-  description = "Redis SKU — must be Premium for Private Endpoints"
+  description = "AMR SKU. Balanced_B0 is the smallest. Balanced_B1, B3, B5, B10 are larger."
   type        = string
-  default     = "Premium"
+  default     = "Balanced_B0"
 
   validation {
-    condition     = var.sku_name == "Premium"
-    error_message = "This module requires Premium SKU. Lower SKUs do not support Private Endpoints."
+    condition     = can(regex("^Balanced_B[0-9]+$", var.sku_name))
+    error_message = "sku_name must be of the form Balanced_Bn (e.g. Balanced_B0, Balanced_B1)."
   }
 }
 
-variable "capacity" {
-  description = "Premium SKU capacity (1, 2, 3, 4, 5 corresponding to P1, P2, P3, P4, P5)"
-  type        = number
-  default     = 1
-
-  validation {
-    condition     = contains([1, 2, 3, 4, 5], var.capacity)
-    error_message = "Premium capacity must be 1-5."
-  }
+variable "high_availability_enabled" {
+  description = "Whether the Redis cluster should be highly available across availability zones."
+  type        = bool
+  default     = true
 }
 
-variable "private_endpoint_subnet_id" {
-  description = "Subnet ID for the Private Endpoint NIC"
+variable "private_endpoints_subnet_id" {
+  description = "Subnet ID for the Private Endpoint."
   type        = string
 }
 
 variable "private_dns_zone_id" {
-  description = "Private DNS zone ID for redis.cache.windows.net"
+  description = "Private DNS zone ID for AMR (must be the region-specific zone)."
   type        = string
+}
+
+variable "consumer_object_ids" {
+  description = <<-EOT
+    Map of consumer name → principal object ID of the UAMI that needs
+    Entra ID access to the cache. Each entry results in one access policy
+    assignment on the default database.
+  EOT
+  type        = map(string)
+  default     = {}
 }
 
 variable "log_analytics_workspace_id" {
@@ -56,7 +71,7 @@ variable "log_analytics_workspace_id" {
 }
 
 variable "tags" {
-  description = "Tags applied to all resources"
+  description = "Tags applied to all resources."
   type        = map(string)
   default     = {}
 }

@@ -1,7 +1,12 @@
 # 8. Redis — Premium with Private Endpoint, access-key auth via Key Vault
 
-Date: 2026-04-27
-Status: Accepted
+Date: 2026-05-12
+Status: Superseded by [ADR-0013](0013-managed-redis-migration.md)
+
+> **Note**: This ADR is retained for historical context. Azure Cache for
+> Redis (the service this ADR describes) was retired during the lifetime
+> of the project; the system migrated to Azure Managed Redis as described
+> in ADR-0013.
 
 ## Context
 

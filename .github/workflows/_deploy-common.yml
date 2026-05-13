@@ -95,6 +95,13 @@ jobs:
             echo "wi_client_id_scheduler=$(terraform output -json workload_identity_client_ids | jq -r .scheduler)"
           } >> "$GITHUB_OUTPUT"
 
+          # NEW: principal object IDs for Redis Entra ID auth
+          {
+            echo "wi_principal_id_api=$(terraform output -json workload_identity_principal_ids | jq -r .api)"
+            echo "wi_principal_id_worker=$(terraform output -json workload_identity_principal_ids | jq -r .worker)"
+            echo "wi_principal_id_scheduler=$(terraform output -json workload_identity_principal_ids | jq -r .scheduler)"
+          } >> "$GITHUB_OUTPUT"
+
           # App Insights connection strings (sensitive — write to env, not output)
           {
             echo "APP_INSIGHTS_CONNECTION_STRING_API<<EOF_API"
@@ -203,24 +210,6 @@ jobs:
       - name: Verify cluster connectivity
         run: kubectl get nodes
 
-      - name: Ensure Redis Secret exists (scheduler only)
-        if: inputs.service == 'scheduler'
-        run: |
-          # Scheduler reads the Redis primary key from a Kubernetes Secret.
-          # The deploy workflow ensures the Secret exists with the current
-          # value from Key Vault. Idempotent — kubectl apply replaces.
-          REDIS_PASSWORD=$(az keyvault secret show \
-            --vault-name "$(echo '${{ steps.tf.outputs.keyvault_uri }}' | sed -E 's|https://([^.]+).*|\1|')" \
-            --name redis-primary-key \
-            --query value -o tsv)
-
-          kubectl create namespace ticketing --dry-run=client -o yaml | kubectl apply -f -
-
-          kubectl create secret generic scheduler-redis-credentials \
-            --namespace ticketing \
-            --from-literal=redis-password="$REDIS_PASSWORD" \
-            --dry-run=client -o yaml | kubectl apply -f -
-
       - name: Render manifests with envsubst
         env:
           ACR_LOGIN_SERVER: ${{ steps.acr.outputs.acr_login_server }}
@@ -234,6 +223,9 @@ jobs:
           WORKLOAD_IDENTITY_CLIENT_ID_API: ${{ steps.tf.outputs.wi_client_id_api }}
           WORKLOAD_IDENTITY_CLIENT_ID_WORKER: ${{ steps.tf.outputs.wi_client_id_worker }}
           WORKLOAD_IDENTITY_CLIENT_ID_SCHEDULER: ${{ steps.tf.outputs.wi_client_id_scheduler }}
+          WORKLOAD_IDENTITY_PRINCIPAL_ID_API: ${{ steps.tf.outputs.wi_principal_id_api }}
+          WORKLOAD_IDENTITY_PRINCIPAL_ID_WORKER: ${{ steps.tf.outputs.wi_principal_id_worker }}
+          WORKLOAD_IDENTITY_PRINCIPAL_ID_SCHEDULER: ${{ steps.tf.outputs.wi_principal_id_scheduler }}
           UAMI_API_NAME: uami-ticketing-uksouth-api
           UAMI_WORKER_NAME: uami-ticketing-uksouth-worker
           UAMI_SCHEDULER_NAME: uami-ticketing-uksouth-scheduler

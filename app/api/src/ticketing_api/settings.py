@@ -60,10 +60,16 @@ class Settings(BaseSettings):
 
     # ── Redis ─────────────────────────────────────────────────────────────────
     redis_host: str = "localhost"
-    redis_port: int = 6379
-    redis_use_tls: bool = False
+    redis_port: int = 6379  # 10000 in cloud, 6379 locally
+    redis_use_tls: bool = False  # true in cloud, false locally
+    redis_use_entra_id: bool = False  # true in cloud
+
+    # When using Entra ID, the username is the consumer UAMI's principal
+    # object ID. AMR uses this to look up the access policy assignment.
+    redis_username: str = ""
+
+    # Local-only fallback password (None means no auth, for plain dev Redis)
     redis_password: SecretStr | None = None
-    redis_keyvault_secret_name: str = "redis-primary-key"  # noqa: S105 — this is the secret's NAME, not the value
 
     # ── Service Bus ───────────────────────────────────────────────────────────
     # Local development uses a docker-compose Service Bus emulator or skips

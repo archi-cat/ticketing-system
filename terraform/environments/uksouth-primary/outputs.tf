@@ -24,6 +24,11 @@ output "workload_identity_client_ids" {
   value       = module.identity.identity_client_ids
 }
 
+output "workload_identity_principal_ids" {
+  description = "Map of service → UAMI principal object ID."
+  value       = module.identity.identity_principal_ids
+}
+
 # ── Data layer ────────────────────────────────────────────────────────────────
 
 output "postgres_fqdn" {
@@ -41,9 +46,9 @@ output "redis_hostname" {
   value       = module.redis.hostname
 }
 
-output "redis_ssl_port" {
-  description = "Redis SSL port"
-  value       = module.redis.ssl_port
+output "redis_port" {
+  description = "Redis port"
+  value       = module.redis.port
 }
 
 output "servicebus_fqdn" {
