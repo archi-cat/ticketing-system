@@ -75,17 +75,15 @@ resource "azurerm_private_endpoint" "redis" {
 # Note: AMR uses 'ConnectionEvents' as the log category name. The old Azure
 # Cache for Redis used 'ConnectedClientList' — that category doesn't exist
 # on AMR.
-
-resource "azurerm_monitor_diagnostic_setting" "redis" {
+#
+# Diagnostic setting #1 — metrics on the cache (parent) resource.
+# 'AllMetrics' is the only category supported at this level.
+resource "azurerm_monitor_diagnostic_setting" "redis_metrics" {
   count = var.diagnostic_settings_enabled ? 1 : 0
 
-  name                       = "diag-${var.name}"
+  name                       = "diag-metrics-${var.name}"
   target_resource_id         = azurerm_managed_redis.main.id
   log_analytics_workspace_id = var.log_analytics_workspace_id
-
-  enabled_log {
-    category = "ConnectionEvents"
-  }
 
   metric {
     category = "AllMetrics"
@@ -96,5 +94,23 @@ resource "azurerm_monitor_diagnostic_setting" "redis" {
       condition     = !var.diagnostic_settings_enabled || var.log_analytics_workspace_id != null
       error_message = "log_analytics_workspace_id must be set when diagnostic_settings_enabled is true."
     }
+  }
+}
+
+# Diagnostic setting #2 — connection events on the default database
+# (child) resource. ConnectionEvents only exists at this level.
+#
+# The default database is implicitly created by azurerm_managed_redis as
+# a child resource named 'default'. We construct its resource ID rather
+# than declare it separately.
+resource "azurerm_monitor_diagnostic_setting" "redis_database_logs" {
+  count = var.diagnostic_settings_enabled ? 1 : 0
+
+  name                       = "diag-logs-${var.name}"
+  target_resource_id         = "${azurerm_managed_redis.main.id}/databases/default"
+  log_analytics_workspace_id = var.log_analytics_workspace_id
+
+  enabled_log {
+    category = "ConnectionEvents"
   }
 }
