@@ -120,11 +120,11 @@ resource "azurerm_subnet_network_security_group_association" "private_endpoints"
 
 locals {
   private_dns_zones = {
-    postgres   = "privatelink.postgres.database.azure.com"
-    redis      = "privatelink.redis.cache.windows.net"
-    servicebus = "privatelink.servicebus.windows.net"
-    keyvault   = "privatelink.vaultcore.azure.net"
-    acr        = "privatelink.azurecr.io"
+    postgres      = "privatelink.postgres.database.azure.com"
+    managed_redis = "privatelink.${var.location}.redisenterprise.cache.azure.net"
+    servicebus    = "privatelink.servicebus.windows.net"
+    keyvault      = "privatelink.vaultcore.azure.net"
+    acr           = "privatelink.azurecr.io"
   }
 }
 

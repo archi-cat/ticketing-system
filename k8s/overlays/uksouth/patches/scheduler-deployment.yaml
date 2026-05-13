@@ -14,3 +14,5 @@ spec:
               value: ${UAMI_SCHEDULER_NAME}
             - name: APPLICATIONINSIGHTS_CONNECTION_STRING
               value: ${APP_INSIGHTS_CONNECTION_STRING_WORKERS}
+            - name: REDIS_USERNAME
+              value: ${WORKLOAD_IDENTITY_PRINCIPAL_ID_API}

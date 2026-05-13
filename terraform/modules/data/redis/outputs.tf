@@ -1,40 +1,21 @@
-output "cache_id" {
-  description = "Redis cache resource ID"
-  value       = azurerm_redis_cache.main.id
+output "id" {
+  description = "Resource ID of the Managed Redis instance."
+  value       = azurerm_managed_redis.main.id
 }
 
-output "cache_name" {
-  description = "Redis cache name"
-  value       = azurerm_redis_cache.main.name
+output "name" {
+  description = "Name of the Managed Redis instance."
+  value       = azurerm_managed_redis.main.name
 }
 
 output "hostname" {
-  description = "Redis hostname — resolves to the Private Endpoint IP via the linked DNS zone"
-  value       = azurerm_redis_cache.main.hostname
+  description = "Hostname clients use to connect."
+  value       = azurerm_managed_redis.main.hostname
 }
 
-output "ssl_port" {
-  description = "Redis SSL port (typically 6380)"
-  value       = azurerm_redis_cache.main.ssl_port
+output "port" {
+  description = "TLS port. Always 10000 for AMR."
+  value       = 10000
 }
 
-output "primary_access_key" {
-  description = "Primary access key — should be stored in Key Vault, never used directly in app config"
-  value       = azurerm_redis_cache.main.primary_access_key
-  sensitive   = true
-}
-
-output "secondary_access_key" {
-  description = "Secondary access key — used during key rotation"
-  value       = azurerm_redis_cache.main.secondary_access_key
-  sensitive   = true
-}
-
-output "connection_string_template" {
-  description = <<-EOT
-    Connection string template (no key embedded). Apps construct the full string at runtime
-    after fetching the primary key from Key Vault. Format suitable for redis-py:
-    rediss://:{KEY}@{HOSTNAME}:{PORT}/0
-  EOT
-  value       = "rediss://:{KEY}@${azurerm_redis_cache.main.hostname}:${azurerm_redis_cache.main.ssl_port}/0"
-}
+# Note: no more primary_access_key — Entra ID auth means no key to surface.

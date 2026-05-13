@@ -1,78 +1,63 @@
-terraform {
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 4.0"
-    }
-  }
-  required_version = ">= 1.9.0"
-}
+# Azure Managed Redis (AMR) — successor to Azure Cache for Redis.
+#
+# Why we migrated:
+#   - Azure Cache for Redis is retired; new instances cannot be created
+#   - AMR supports Entra ID authentication at the data plane, removing the
+#     Key Vault round-trip pattern we previously used for access keys
+#
+# Auth model:
+#   Workload Identity (UAMI) → DefaultAzureCredential → mint token for
+#   https://redis.azure.com/.default → AUTH to Redis with the token
+#   No keys, no Key Vault round trip, no Kubernetes Secrets.
 
-# ── Redis Cache — Premium ─────────────────────────────────────────────────────
-
-resource "azurerm_redis_cache" "main" {
-  name                = var.cache_name
+resource "azurerm_managed_redis" "main" {
+  name                = var.name
   location            = var.location
   resource_group_name = var.resource_group_name
+  sku_name            = var.sku_name
 
-  capacity = var.capacity
-  family   = "P"
-  sku_name = var.sku_name
+  high_availability_enabled = var.high_availability_enabled
 
-  # ── Public access disabled ──────────────────────────────────────────────────
-  # Once the Private Endpoint is in place, the public endpoint is unnecessary
-  # and represents needless attack surface.
-  public_network_access_enabled = false
+  default_database {
+    # Disable access keys entirely. Entra ID is the only path.
+    # Combined with public_network_access=Disabled and the PE below, the
+    # cache is unreachable except via tokens minted by recognised principals.
+    access_keys_authentication_enabled = false
 
-  # ── TLS ─────────────────────────────────────────────────────────────────────
-  minimum_tls_version  = "1.2"
-  non_ssl_port_enabled = false
+    # OSSCluster gives us the same single-node-as-cluster experience as the
+    # old Premium tier. Clients use the cluster protocol automatically.
+    clustering_policy = "OSSCluster"
 
-  # ── Redis configuration ─────────────────────────────────────────────────────
-  redis_configuration {
-    # MAXMEMORY policy — allkeys-lru evicts least recently used keys when
-    # memory is full. Right choice for cache + ephemeral locks use case.
-    maxmemory_policy = "allkeys-lru"
-
-    # Persistence intentionally not configured in Phase 1.
-    # Cache + lock data is regenerable; we accept restart data loss.
-    # Phase 2 will add RDB persistence with a dedicated storage account.
-
-    # Authentication — access keys remain enabled. Redis (the original
-    # service, not Azure Managed Redis) does not support Entra ID auth.
-    # The keys are stored in Key Vault and retrieved by apps via Workload
-    # Identity.
-    authentication_enabled = true
+    # When memory fills, evict the keys most likely to be safe to drop.
+    eviction_policy = "VolatileLRU"
   }
 
   tags = var.tags
-
-  lifecycle {
-    # Patch schedule and zones may change during maintenance — don't drift on these
-    ignore_changes = [
-      patch_schedule,
-      zones,
-    ]
-  }
 }
 
-# ── Private Endpoint ──────────────────────────────────────────────────────────
-# Creates a NIC in the private-endpoints subnet that resolves to the Redis
-# cache. The Private DNS zone link (set up by the network module) ensures
-# *.redis.cache.windows.net resolves to the Private Endpoint IP from anywhere
-# in the VNet.
+# Entra ID access policy assignments — one per consumer UAMI.
+# This is what the API, worker, and scheduler need in order to AUTH.
+resource "azurerm_managed_redis_access_policy_assignment" "consumers" {
+  for_each = var.consumer_object_ids
 
+  managed_redis_id = azurerm_managed_redis.main.id
+  object_id        = each.value
+}
+
+# Private endpoint — the only network path into the cache.
 resource "azurerm_private_endpoint" "redis" {
-  name                = "pe-${var.cache_name}"
+  name                = "pe-${var.name}"
   location            = var.location
   resource_group_name = var.resource_group_name
-  subnet_id           = var.private_endpoint_subnet_id
+  subnet_id           = var.private_endpoints_subnet_id
 
   private_service_connection {
-    name                           = "psc-${var.cache_name}"
-    private_connection_resource_id = azurerm_redis_cache.main.id
+    name                           = "psc-${var.name}"
+    private_connection_resource_id = azurerm_managed_redis.main.id
     is_manual_connection           = false
-    subresource_names              = ["redisCache"]
+    # IMPORTANT: AMR uses 'redisEnterprise' as the subresource, not 'redisCache'.
+    # This is the underlying Microsoft.Cache/redisEnterprise resource type.
+    subresource_names = ["redisEnterprise"]
   }
 
   private_dns_zone_group {
@@ -84,14 +69,22 @@ resource "azurerm_private_endpoint" "redis" {
 }
 
 # ── Diagnostic settings ───────────────────────────────────────────────────────
+# Stream connection events and metrics to Log Analytics for security audit
+# and operational monitoring.
+#
+# Note: AMR uses 'ConnectionEvents' as the log category name. The old Azure
+# Cache for Redis used 'ConnectedClientList' — that category doesn't exist
+# on AMR.
 
 resource "azurerm_monitor_diagnostic_setting" "redis" {
-  name                       = "diag-${var.cache_name}"
-  target_resource_id         = azurerm_redis_cache.main.id
+  count = var.log_analytics_workspace_id == null ? 0 : 1
+
+  name                       = "diag-${var.name}"
+  target_resource_id         = azurerm_managed_redis.main.id
   log_analytics_workspace_id = var.log_analytics_workspace_id
 
   enabled_log {
-    category = "ConnectedClientList"
+    category = "ConnectionEvents"
   }
 
   metric {

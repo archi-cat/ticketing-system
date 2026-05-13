@@ -7,7 +7,6 @@ import structlog
 from fastapi import FastAPI
 
 from ticketing_api.infrastructure.database import Database
-from ticketing_api.infrastructure.keyvault import KeyVaultClient
 from ticketing_api.infrastructure.redis_client import RedisClient
 from ticketing_api.infrastructure.servicebus import ServiceBusPublisher
 from ticketing_api.observability import configure_observability
@@ -30,15 +29,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     # Construct clients (constructor only — no I/O yet)
-    keyvault = KeyVaultClient(settings)
     database = Database(settings)
-    redis = RedisClient(settings, keyvault)
+    redis = RedisClient(settings)
     servicebus = ServiceBusPublisher(settings)
 
     # Startup order matters:
     #   1. Key Vault first (Redis depends on it)
     #   2. Database, Redis, Service Bus in parallel — independent
-    await keyvault.startup()
     await database.startup()
     await redis.startup()
     await servicebus.startup()
@@ -49,7 +46,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     booking_service = BookingService(settings, database, servicebus)
 
     # Stash on app.state for routes/dependencies to access
-    app.state.keyvault = keyvault
     app.state.database = database
     app.state.redis = redis
     app.state.servicebus = servicebus
@@ -65,7 +61,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         await servicebus.shutdown()
         await redis.shutdown()
         await database.shutdown()
-        await keyvault.shutdown()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

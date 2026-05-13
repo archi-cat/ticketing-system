@@ -2,7 +2,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 4.0"
+      version = "~> 4.5"
     }
 
     http = {
@@ -168,16 +168,28 @@ module "postgres" {
   tags = var.tags
 }
 
-# Redis — Premium with Private Endpoint
+# Redis — Azure managed Redis
 module "redis" {
   source = "../../modules/data/redis"
 
+  name                = "redis-ticketing-uksouth-${var.name_suffix}"
   location            = var.location
   resource_group_name = azurerm_resource_group.main.name
-  cache_name          = "redis-ticketing-uksouth-${var.name_suffix}"
 
-  private_endpoint_subnet_id = module.network.subnet_ids.private_endpoints
-  private_dns_zone_id        = module.network.private_dns_zone_ids.redis
+  sku_name                  = "Balanced_B0"
+  high_availability_enabled = true
+
+  private_endpoints_subnet_id = module.network.subnet_ids.private_endpoints
+  private_dns_zone_id         = module.network.private_dns_zone_ids.managed_redis
+
+  # Grant each application UAMI Entra ID access on the default database.
+  # These are the principal object IDs, NOT the client IDs — Redis's
+  # access policy assignment is identity-based, not OIDC-token-issuer-based.
+  consumer_object_ids = {
+    api       = module.identity.identity_principal_ids.api
+    worker    = module.identity.identity_principal_ids.worker
+    scheduler = module.identity.identity_principal_ids.scheduler
+  }
 
   log_analytics_workspace_id = module.observability.log_analytics_workspace_id
 
@@ -246,13 +258,6 @@ module "keyvault" {
     # Add GitHub Actions runner ranges if running from CI:
     # "4.148.0.0/16", etc. — see https://api.github.com/meta
   ]
-
-  # Bootstrap the Redis access key as a secret
-  secrets = {
-    "redis-primary-key" = {
-      value = module.redis.primary_access_key
-    }
-  }
 
   # Application UAMIs read secrets
   secret_reader_principal_ids = {

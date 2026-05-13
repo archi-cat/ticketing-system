@@ -49,13 +49,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            # Redis password gets fetched from Key Vault at deploy time
-            # and injected as a Kubernetes Secret. Mounted as REDIS_PASSWORD.
-            - name: REDIS_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: scheduler-redis-credentials
-                  key: redis-password
           envFrom:
             - configMapRef:
                 name: ticketing-base-config
