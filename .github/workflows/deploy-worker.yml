@@ -21,6 +21,9 @@ concurrency:
 
 jobs:
   deploy:
+    permissions:
+      id-token: write
+      contents: read 
     uses: ./.github/workflows/_deploy-common.yml
     with:
       service: worker
