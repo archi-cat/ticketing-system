@@ -23,7 +23,8 @@ dependencies = [
     "structlog==24.4.0",
 
     # Tiny HTTP server for K8s health probes
-    "aiohttp==3.11.10",
+    "aiohttp==3.13.3",
+    "urllib3>=2.7.0",
 ]
 
 [dependency-groups]

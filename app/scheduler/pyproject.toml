@@ -15,7 +15,6 @@ dependencies = [
 
     # Azure SDKs
     "azure-identity==1.21.0",
-    "aiohttp==3.11.10",
 
     # Redis — for leader election
     "redis[hiredis]==5.2.1",
@@ -30,7 +29,8 @@ dependencies = [
     "structlog==24.4.0",
 
     # Tiny HTTP server for K8s health probes
-    "aiohttp==3.11.10",
+    "aiohttp==3.13.3",
+    "urllib3>=2.7.0",
 ]
 
 [dependency-groups]
