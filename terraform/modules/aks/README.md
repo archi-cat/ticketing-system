@@ -2,6 +2,67 @@
 
 Creates an AKS cluster with two node pools (system and user), Workload Identity enabled, Container Insights wired to a Log Analytics workspace, and Cilium-based NetworkPolicy enforcement.
 
+## Subscription prerequisites
+
+The AGC ingress add-on and Gateway API installation are behind preview
+feature flags that must be registered **once per Azure subscription** before
+the cluster can enable them. The provider doesn't enforce or check this,
+so it's a manual one-time step.
+
+```powershell
+az feature register --namespace Microsoft.ContainerService --name ApplicationLoadBalancerPreview
+az feature register --namespace Microsoft.ContainerService --name ManagedGatewayAPIPreview
+
+# Wait until both report "Registered" (5-15 minutes)
+az feature show --namespace Microsoft.ContainerService --name ApplicationLoadBalancerPreview
+az feature show --namespace Microsoft.ContainerService --name ManagedGatewayAPIPreview
+
+# Propagate to the resource provider
+az provider register --namespace Microsoft.ContainerService
+```
+
+Reference: https://learn.microsoft.com/en-us/azure/aks/managed-gateway-api
+
+## Known gaps with the Terraform schema
+
+The AGC (Application Gateway for Containers) and Gateway API add-ons are
+enabled via a one-time `az rest` call rather than Terraform, because the
+azurerm provider has not yet surfaced the `ingressProfile` settings from
+the 2025-09-02-preview API.
+
+To enable on a freshly-created cluster:
+
+\`\`\`powershell
+$RG = "resource-group-name"
+$AKS = az aks list -g $RG --query '[0].name' -o tsv
+AKS_ID = az aks show -g <RG> -n <CLUSTER> --query id -o tsv
+
+@'
+{
+  "location": "uksouth",
+  "properties": {
+    "ingressProfile": {
+      "applicationLoadBalancer": { "enabled": true },
+      "gatewayAPI": { "installation": "Standard" }
+    }
+  }
+}
+'@ | Out-File -FilePath addon-body.json -Encoding utf8
+
+az rest --method put `
+    --uri "https://management.azure.com${AKS_ID}?api-version=2025-09-02-preview" `
+    --headers "Content-Type=application/json" `
+    --body "@addon-body.json"
+
+Remove-Item addon-body.json
+\`\`\`
+
+This installs the Gateway API CRDs and the ALB Controller in `kube-system`.
+Required before any Gateway or HTTPRoute resources can be applied.
+
+Track the Terraform provider gap at:
+https://github.com/hashicorp/terraform-provider-azurerm/issues
+
 ## Usage
 
 ```hcl
