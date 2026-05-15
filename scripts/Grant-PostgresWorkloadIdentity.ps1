@@ -133,7 +133,7 @@ SELECT * FROM pgaadauth_create_principal('$WorkerUamiName',    false, false);
 SELECT * FROM pgaadauth_create_principal('$SchedulerUamiName', false, false);
 
 -- Print final state for verification
-SELECT rolname, principal_type, is_admin FROM pgaadauth_list_principals(false);
+SELECT rolname, principaltype, isadmin FROM pgaadauth_list_principals(false);
 "@
 
 Write-Host "Creating Entra-mapped roles in '$ManagementDatabase'..." -ForegroundColor Cyan
