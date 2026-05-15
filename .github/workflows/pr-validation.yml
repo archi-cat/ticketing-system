@@ -3,11 +3,9 @@ name: PR Validation
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'app/**'
-      - 'k8s/**'
-      - 'terraform/**'
-      - '.github/workflows/**'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
 
 # Cancel previous runs when a new commit is pushed to the same PR
 concurrency:
