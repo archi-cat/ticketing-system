@@ -3,6 +3,25 @@
 End-to-end deployment from empty Azure subscription to running services.
 The order is strict — each phase depends on prior phases being complete.
 
+## Common gotchas
+
+This runbook captures the operational reality of deploying this system,
+including subtle issues that are easy to miss:
+
+- **PostgreSQL is VNet-injected** — not reachable from outside the VNet,
+  including from Azure Cloud Shell. A temporary VM inside the VNet is
+  the canonical bootstrap path. Phase 2 will move this to a Kubernetes
+  Job.
+- **Two NSG layers** — the subnet-level NSG must allow SSH inbound for
+  the temp VM, not just the NIC-level NSG. See Step 2.1a.
+- **Roles vs Entra principals** — applications need to be created via
+  `pgaadauth_create_principal` (in the `postgres` database), not plain
+  `CREATE ROLE`. Otherwise `pg_hba.conf` rejects their tokens despite
+  the role existing. See Step 2.4.
+- **AGC add-on is preview** — `ApplicationLoadBalancerPreview` and
+  `ManagedGatewayAPIPreview` must be registered once per subscription.
+  Phase 0.1.
+
 ## Phase 0 — Subscription prerequisites (one-time)
 
 These need to be done once per Azure subscription. After they're set,
@@ -110,10 +129,14 @@ these steps run from a temporary Linux VM inside the VNet.
 
 ### 2.1 Create a temporary VM in the VNet
 
+The VM goes in the `private-endpoints` subnet — the same subnet that
+PostgreSQL's Private Endpoint is in, so the VM can reach PostgreSQL
+without crossing any other network boundary.
+
 ```powershell
 $RG = "rg-ticketing-uksouth"
 $VNET = (az network vnet list -g $RG --query '[0].name' -o tsv)
-$SUBNET_ID = az network vnet subnet show -g $RG --vnet-name $VNET --name snet-private-endpoints --query id -o tsv
+$SUBNET_ID = az network vnet subnet show -g $RG --vnet-name $VNET --name private-endpoints --query id -o tsv
 
 az vm create `
     --resource-group $RG `
@@ -127,7 +150,45 @@ az vm create `
 
 $VM_IP = az vm show -d -g $RG -n vm-bootstrap-temp --query publicIps -o tsv
 ```
-Note: Add a temporary inbound rule that will allow SSH connections to the NSG(e.g. nsg-pe-uksouth) associated with the subnet(e.g. snet-private-endpoints) where the VM is deployed to.
+
+### 2.1a Open SSH access at the subnet NSG
+
+Two layers of NSG apply to the VM:
+
+1. The NIC-level NSG (auto-created by `az vm create`) — allows SSH by default
+2. The subnet-level NSG (from the network module) — locked down by default
+
+Both must permit the traffic. The NIC NSG is fine; the subnet NSG needs
+a temporary rule for your IP. Get the subnet NSG name and add the rule:
+
+```powershell
+# Find your current public IP
+$MY_IP = (Invoke-RestMethod -Uri "https://api.ipify.org")
+
+# Find the NSG attached to the private-endpoints subnet
+$NSG_ID = az network vnet subnet show `
+    --resource-group $RG `
+    --vnet-name $VNET `
+    --name private-endpoints `
+    --query networkSecurityGroup.id -o tsv
+$NSG_NAME = ($NSG_ID -split "/")[-1]
+
+# Add a high-priority temporary rule. Priority 200 puts it above most
+# default rules; you can adjust if there are conflicts.
+az network nsg rule create `
+    --resource-group $RG `
+    --nsg-name $NSG_NAME `
+    --name temp-bootstrap-ssh `
+    --priority 200 `
+    --direction Inbound `
+    --access Allow `
+    --protocol Tcp `
+    --source-address-prefixes $MY_IP `
+    --destination-port-ranges 22 `
+    --description "Temporary SSH access for bootstrap VM. Remove after bootstrap completes."
+```
+
+> **Security note**: Pin the source IP narrowly. Never use `--source-address-prefixes "*"` or `Internet` — that opens SSH to the entire internet.
 
 ### 2.2 SSH in and install tooling
 
@@ -203,18 +264,32 @@ pwsh ./scripts/Seed-SampleEvents.ps1 \
 
 Output lists four seeded events.
 
-### 2.6 Tear down the VM
+### 2.6 Tear down the VM AND the NSG rule
 
-Exit SSH, then from your local machine:
+When you've finished the bootstrap and exited SSH:
 
 ```powershell
-az vm delete -g rg-ticketing-uksouth -n vm-bootstrap-temp --yes
-az network nic delete -g rg-ticketing-uksouth -n vm-bootstrap-tempVMNic
-az network public-ip delete -g rg-ticketing-uksouth -n vm-bootstrap-tempPublicIP
+# Remove the temporary NSG rule first
+az network nsg rule delete `
+    --resource-group $RG `
+    --nsg-name $NSG_NAME `
+    --name temp-bootstrap-ssh
+
+# Delete the VM and its auxiliary resources
+az vm delete -g $RG -n vm-bootstrap-temp --yes
+az network nic delete -g $RG -n vm-bootstrap-tempVMNic
+az network public-ip delete -g $RG -n vm-bootstrap-tempPublicIP
 
 Start-Sleep -Seconds 10
-az disk list -g rg-ticketing-uksouth --query "[?contains(name,'vm-bootstrap-temp')].name" -o tsv |
-    ForEach-Object { az disk delete -g rg-ticketing-uksouth -n $_ --yes }
+az disk list -g $RG --query "[?contains(name,'vm-bootstrap-temp')].name" -o tsv |
+    ForEach-Object { az disk delete -g $RG -n $_ --yes }
+```
+
+Verify the rule is gone:
+
+```powershell
+az network nsg rule list -g $RG --nsg-name $NSG_NAME --query "[?name=='temp-bootstrap-ssh']"
+# Should return []
 ```
 
 ## Phase 3 — Application deployment
