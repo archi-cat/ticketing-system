@@ -6,6 +6,8 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
 
 # Cancel previous runs when a new commit is pushed to the same PR
 concurrency:
