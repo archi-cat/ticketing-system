@@ -160,7 +160,7 @@ module "identity" {
 
 # ── AGC ───────────────────────────────────────────────────────────────────────
 module "agc" {
-  source = "../../modules/agc"
+  source = "../../modules/AGC"
 
   name                = "agc-ticketing-${var.name_suffix}"
   location            = var.location
