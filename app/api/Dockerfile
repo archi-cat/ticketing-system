@@ -31,6 +31,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ─── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM python:3.13-slim-bookworm AS runtime
 
+# Pull in any security updates released since the base image was built.
+# Base images age — Debian publishes patches continuously; this step ensures
+# we pick them up at our build time. Use --no-install-recommends to avoid
+# pulling in extras we don't need.
+RUN apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create a non-root user for the application. Distroless would be even safer,
 # but slim is more debuggable and still has good security posture.
 RUN groupadd --system --gid 1000 app \
