@@ -17,6 +17,24 @@ output "aks_oidc_issuer_url" {
   value       = module.aks.oidc_issuer_url
 }
 
+# ── AGC ───────────────────────────────────────────────────────────────────────
+
+output "agc_name" {
+  description = "AGC resource name — referenced by Gateway alb-name annotation."
+  value       = module.agc.name
+}
+
+output "agc_id" {
+  description = "AGC resource ID — set on Gateway alb.networking.azure.io/alb-id annotation."
+  value       = module.agc.id
+}
+
+output "agc_frontend_id" {
+  description = "AGC frontend ID — set on Gateway alb.networking.azure.io/alb-frontend annotation."
+  value       = module.agc.frontend_id
+}
+
+
 # ── Identity ──────────────────────────────────────────────────────────────────
 
 output "workload_identity_client_ids" {

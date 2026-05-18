@@ -19,11 +19,6 @@ output "identity_names" {
 }
 
 output "service_account_names" {
-  description = "Map of service name to Kubernetes service account name (passthrough for convenience)"
+  description = "Map of service name to its Kubernetes binding (namespace + service account name). Passthrough of var.service_accounts."
   value       = var.service_accounts
-}
-
-output "kubernetes_namespace" {
-  description = "Kubernetes namespace (passthrough)"
-  value       = var.kubernetes_namespace
 }
