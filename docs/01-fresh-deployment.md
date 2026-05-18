@@ -139,7 +139,7 @@ without crossing any other network boundary.
 ```powershell
 $RG = "rg-ticketing-uksouth"
 $VNET = (az network vnet list -g $RG --query '[0].name' -o tsv)
-$SUBNET_ID = az network vnet subnet show -g $RG --vnet-name $VNET --name private-endpoints --query id -o tsv
+$SUBNET_ID = az network vnet subnet show -g $RG --vnet-name $VNET --name snet-private-endpoints --query id -o tsv
 
 az vm create `
     --resource-group $RG `

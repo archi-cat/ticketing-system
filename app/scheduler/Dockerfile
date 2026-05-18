@@ -22,6 +22,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ─── Runtime ──────────────────────────────────────────────────────────────────
 FROM python:3.13-slim-bookworm AS runtime
 
+RUN apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system --gid 1000 app \
  && useradd  --system --uid 1000 --gid app --create-home --shell /bin/false app
 
