@@ -18,23 +18,30 @@ variable "oidc_issuer_url" {
   type        = string
 }
 
-variable "kubernetes_namespace" {
-  description = "Kubernetes namespace where the application service accounts live"
-  type        = string
-  default     = "ticketing"
-}
-
 variable "service_accounts" {
   description = <<-EOT
-    Map of logical service name to its Kubernetes service account name.
-    A UAMI is created for each entry, federated to that service account.
+    Map of workload identity key to its Kubernetes binding.
+
+    The key is the logical name (e.g. "api", "worker", "scheduler", "alb").
+    Each entry specifies the Kubernetes namespace AND service account name
+    the UAMI is federated to.
+
+    Example:
+      service_accounts = {
+        api = {
+          namespace       = "ticketing"
+          service_account = "api-service-account"
+        }
+        alb = {
+          namespace       = "kube-system"
+          service_account = "alb-controller-sa"
+        }
+      }
   EOT
-  type        = map(string)
-  default = {
-    api       = "api-service-account"
-    worker    = "worker-service-account"
-    scheduler = "scheduler-service-account"
-  }
+  type = map(object({
+    namespace       = string
+    service_account = string
+  }))
 }
 
 variable "tags" {

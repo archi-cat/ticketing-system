@@ -134,14 +134,40 @@ module "identity" {
   resource_group_name = azurerm_resource_group.main.name
   name_prefix         = "uami-ticketing-uksouth"
 
-  oidc_issuer_url      = module.aks.oidc_issuer_url
-  kubernetes_namespace = "ticketing"
+  oidc_issuer_url = module.aks.oidc_issuer_url
 
   service_accounts = {
-    api       = "api-service-account"
-    worker    = "worker-service-account"
-    scheduler = "scheduler-service-account"
+    api = {
+      namespace       = "ticketing",
+      service_account = "api-service-account"
+    }
+    worker = {
+      namespace       = "ticketing",
+      service_account = "worker-service-account"
+    }
+    scheduler = {
+      namespace       = "ticketing",
+      service_account = "scheduler-service-account"
+    }
+    alb = {
+      namespace       = "kube-system",
+      service_account = "alb-controller-sa"
+    }
   }
+
+  tags = var.tags
+}
+
+# ── AGC ───────────────────────────────────────────────────────────────────────
+module "agc" {
+  source = "../../modules/AGC"
+
+  name                = "agc-ticketing-${var.name_suffix}"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  subnet_id                   = module.network.subnet_ids.agc
+  alb_controller_principal_id = module.identity.identity_principal_ids.alb
 
   tags = var.tags
 }

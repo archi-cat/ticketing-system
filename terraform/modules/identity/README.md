@@ -15,12 +15,16 @@ module "identity" {
   name_prefix         = "uami-ticketing-uksouth"
 
   oidc_issuer_url      = module.aks.oidc_issuer_url
-  kubernetes_namespace = "ticketing"
-
+  
   service_accounts = {
-    api       = "api-service-account"
-    worker    = "worker-service-account"
-    scheduler = "scheduler-service-account"
+    api       = { 
+      namespace = "ticketing",   
+      service_account = "api-service-account" 
+    }
+    worker    = { 
+      namespace = "ticketing",   
+      service_account = "worker-service-account" 
+    }
   }
 
   tags = {
@@ -45,9 +49,29 @@ module "identity" {
 | `resource_group_name` | string | Yes | — | Resource group for UAMIs |
 | `name_prefix` | string | Yes | — | Prefix for UAMI names |
 | `oidc_issuer_url` | string | Yes | — | AKS cluster OIDC issuer URL |
-| `kubernetes_namespace` | string | No | `ticketing` | Namespace of the service accounts |
-| `service_accounts` | map(string) | No | `{api, worker, scheduler}` | Map of logical name → SA name |
+| `service_accounts` | `map(object({ namespace = string, service_account = string }))` | Map of logical identity key to its Kubernetes binding. Each entry specifies both the namespace AND the service account name. |
 | `tags` | map(string) | No | `{}` | Tags applied to all resources |
+
+## Service accounts Example
+
+```hcl
+module "identity" {
+  source = "../../modules/identity"
+
+  # ... other inputs
+
+  service_accounts = {
+    api = {
+      namespace       = "ticketing"
+      service_account = "api-service-account"
+    }
+    alb = {
+      namespace       = "kube-system"
+      service_account = "alb-controller-sa"
+    }
+  }
+}
+```
 
 ## Outputs
 
@@ -58,7 +82,6 @@ module "identity" {
 | `identity_client_ids` | map | Service name → client ID (for K8s SA annotations) |
 | `identity_names` | map | Service name → UAMI name |
 | `service_account_names` | map | Passthrough of the `service_accounts` input |
-| `kubernetes_namespace` | string | Passthrough of the namespace input |
 
 ## Notes
 

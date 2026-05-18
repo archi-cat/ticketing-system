@@ -36,5 +36,5 @@ resource "azurerm_federated_identity_credential" "this" {
 
   audience = ["api://AzureADTokenExchange"]
   issuer   = var.oidc_issuer_url
-  subject  = "system:serviceaccount:${var.kubernetes_namespace}:${each.value}"
+  subject  = "system:serviceaccount:${each.value.namespace}:${each.value.service_account}"
 }

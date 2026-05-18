@@ -82,8 +82,11 @@ all the role assignments / federated credentials.
 
 ### 1.3 Enable AGC and Gateway API add-ons on AKS
 
-Currently a manual step — the azurerm Terraform provider doesn't yet
-surface the `ingressProfile` settings for these add-ons. Run after the
+NOTE: The AGC Azure resource is provisioned by Terraform (see the agc
+module). What this step enables is the in-cluster ALB Controller add-on
+that watches Gateway resources and programs the AGC accordingly. This
+configuration setting is not yet supported by the azurerm Terraform
+provider, so it must be enabled via az rest. Run after the
 cluster exists, once per cluster:
 
 ```powershell

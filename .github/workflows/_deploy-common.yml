@@ -86,6 +86,9 @@ jobs:
           echo "redis_hostname=$(terraform output -raw redis_hostname)" >> "$GITHUB_OUTPUT"
           echo "servicebus_fqdn=$(terraform output -raw servicebus_fqdn)" >> "$GITHUB_OUTPUT"
           echo "keyvault_uri=$(terraform output -raw keyvault_uri)" >> "$GITHUB_OUTPUT"
+          echo "agc_name=$(terraform output -raw agc_name)" >> "$GITHUB_OUTPUT"
+          echo "agc_id=$(terraform output -raw agc_id)" >> "$GITHUB_OUTPUT"
+          echo "agc_frontend_id=$(terraform output -raw agc_frontend_id)" >> "$GITHUB_OUTPUT"
 
           # Workload Identity client IDs (one per service)
           # The Terraform output is a JSON map — emit individually
@@ -201,26 +204,28 @@ jobs:
 
       - name: Render manifests with envsubst
         env:
-          ACR_LOGIN_SERVER: ${{ steps.acr.outputs.acr_login_server }}
-          IMAGE_TAG_API: ${{ inputs.service == 'api' && inputs.image_tag || 'latest' }}
-          IMAGE_TAG_WORKER: ${{ inputs.service == 'worker' && inputs.image_tag || 'latest' }}
-          IMAGE_TAG_SCHEDULER: ${{ inputs.service == 'scheduler' && inputs.image_tag || 'latest' }}
-          POSTGRES_FQDN: ${{ steps.tf.outputs.postgres_fqdn }}
-          REDIS_HOSTNAME: ${{ steps.tf.outputs.redis_hostname }}
-          SERVICEBUS_FQDN: ${{ steps.tf.outputs.servicebus_fqdn }}
-          KEYVAULT_URI: ${{ steps.tf.outputs.keyvault_uri }}
-          WORKLOAD_IDENTITY_CLIENT_ID_API: ${{ steps.tf.outputs.wi_client_id_api }}
-          WORKLOAD_IDENTITY_CLIENT_ID_WORKER: ${{ steps.tf.outputs.wi_client_id_worker }}
-          WORKLOAD_IDENTITY_CLIENT_ID_SCHEDULER: ${{ steps.tf.outputs.wi_client_id_scheduler }}
-          WORKLOAD_IDENTITY_PRINCIPAL_ID_API: ${{ steps.tf.outputs.wi_principal_id_api }}
-          WORKLOAD_IDENTITY_PRINCIPAL_ID_WORKER: ${{ steps.tf.outputs.wi_principal_id_worker }}
+          ACR_LOGIN_SERVER:                         ${{ steps.acr.outputs.acr_login_server }}
+          IMAGE_TAG_API:                            ${{ inputs.service == 'api' && inputs.image_tag || 'latest' }}
+          IMAGE_TAG_WORKER:                         ${{ inputs.service == 'worker' && inputs.image_tag || 'latest' }}
+          IMAGE_TAG_SCHEDULER:                      ${{ inputs.service == 'scheduler' && inputs.image_tag || 'latest' }}
+          POSTGRES_FQDN:                            ${{ steps.tf.outputs.postgres_fqdn }}
+          REDIS_HOSTNAME:                           ${{ steps.tf.outputs.redis_hostname }}
+          SERVICEBUS_FQDN:                          ${{ steps.tf.outputs.servicebus_fqdn }}
+          KEYVAULT_URI:                             ${{ steps.tf.outputs.keyvault_uri }}
+          WORKLOAD_IDENTITY_CLIENT_ID_API:          ${{ steps.tf.outputs.wi_client_id_api }}
+          WORKLOAD_IDENTITY_CLIENT_ID_WORKER:       ${{ steps.tf.outputs.wi_client_id_worker }}
+          WORKLOAD_IDENTITY_CLIENT_ID_SCHEDULER:    ${{ steps.tf.outputs.wi_client_id_scheduler }}
+          WORKLOAD_IDENTITY_PRINCIPAL_ID_API:       ${{ steps.tf.outputs.wi_principal_id_api }}
+          WORKLOAD_IDENTITY_PRINCIPAL_ID_WORKER:    ${{ steps.tf.outputs.wi_principal_id_worker }}
           WORKLOAD_IDENTITY_PRINCIPAL_ID_SCHEDULER: ${{ steps.tf.outputs.wi_principal_id_scheduler }}
-          UAMI_API_NAME: uami-ticketing-uksouth-api
-          UAMI_WORKER_NAME: uami-ticketing-uksouth-worker
-          UAMI_SCHEDULER_NAME: uami-ticketing-uksouth-scheduler
-          AGC_NAME: agc-ticketing-uksouth
-          APP_INSIGHTS_CONNECTION_STRING_API: ${{ env.APP_INSIGHTS_CONNECTION_STRING_API }}
-          APP_INSIGHTS_CONNECTION_STRING_WORKERS: ${{ env.APP_INSIGHTS_CONNECTION_STRING_WORKERS }}
+          UAMI_API_NAME:                            uami-ticketing-uksouth-api
+          UAMI_WORKER_NAME:                         uami-ticketing-uksouth-worker
+          UAMI_SCHEDULER_NAME:                      uami-ticketing-uksouth-scheduler
+          AGC_NAME:                                 ${{ steps.tf.outputs.agc_name }}
+          AGC_ID:                                   ${{ steps.tf.outputs.agc_id }}
+          AGC_FRONTEND_ID:                          ${{ steps.tf.outputs.agc_frontend_id }}
+          APP_INSIGHTS_CONNECTION_STRING_API:       ${{ env.APP_INSIGHTS_CONNECTION_STRING_API }}
+          APP_INSIGHTS_CONNECTION_STRING_WORKERS:   ${{ env.APP_INSIGHTS_CONNECTION_STRING_WORKERS }}
         run: |
           set -euo pipefail
           mkdir -p k8s-rendered
