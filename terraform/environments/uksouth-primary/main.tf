@@ -163,7 +163,7 @@ module "agc" {
   location            = var.location
   resource_group_name = azurerm_resource_group.main.name
 
-  subnet_id                   = module.network.subnet_ids.agc
+  subnet_id = module.network.subnet_ids.agc
 
   tags = var.tags
 }
