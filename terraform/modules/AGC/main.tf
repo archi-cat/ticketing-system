@@ -35,23 +35,3 @@ resource "azurerm_application_load_balancer_subnet_association" "this" {
 
   tags = var.tags
 }
-
-# ─── Role assignments for the ALB Controller ─────────────────────────────────
-# The controller (running in-cluster, federated to the UAMI created by the
-# identity module) needs two roles to do its job:
-# - AppGw for Containers Configuration Manager on the AGC resource
-# - Network Contributor on the AGC subnet
-#
-# Both scoped narrowly — not on the whole resource group.
-
-resource "azurerm_role_assignment" "alb_controller_config_manager" {
-  scope                = azurerm_application_load_balancer.this.id
-  role_definition_name = "AppGw for Containers Configuration Manager"
-  principal_id         = var.alb_controller_principal_id
-}
-
-resource "azurerm_role_assignment" "alb_controller_subnet_network_contributor" {
-  scope                = var.subnet_id
-  role_definition_name = "Network Contributor"
-  principal_id         = var.alb_controller_principal_id
-}

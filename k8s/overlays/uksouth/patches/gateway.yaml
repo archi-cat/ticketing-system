@@ -4,6 +4,5 @@ metadata:
   name: ticketing
   namespace: ticketing
   annotations:
-    alb.networking.azure.io/alb-name: ${AGC_NAME}
     alb.networking.azure.io/alb-id: ${AGC_ID}
     alb.networking.azure.io/alb-frontend: ${AGC_FRONTEND_ID}

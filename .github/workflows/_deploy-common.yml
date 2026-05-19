@@ -221,7 +221,6 @@ jobs:
           UAMI_API_NAME:                            uami-ticketing-uksouth-api
           UAMI_WORKER_NAME:                         uami-ticketing-uksouth-worker
           UAMI_SCHEDULER_NAME:                      uami-ticketing-uksouth-scheduler
-          AGC_NAME:                                 ${{ steps.tf.outputs.agc_name }}
           AGC_ID:                                   ${{ steps.tf.outputs.agc_id }}
           AGC_FRONTEND_ID:                          ${{ steps.tf.outputs.agc_frontend_id }}
           APP_INSIGHTS_CONNECTION_STRING_API:       ${{ env.APP_INSIGHTS_CONNECTION_STRING_API }}

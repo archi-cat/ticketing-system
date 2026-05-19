@@ -99,6 +99,7 @@ module "aks" {
 
   location            = var.location
   resource_group_name = azurerm_resource_group.main.name
+  node_resource_group = azurerm_resource_group.main.name
   cluster_name        = "aks-ticketing-uksouth"
 
   system_subnet_id = module.network.subnet_ids.aks_system
@@ -149,10 +150,6 @@ module "identity" {
       namespace       = "ticketing",
       service_account = "scheduler-service-account"
     }
-    alb = {
-      namespace       = "kube-system",
-      service_account = "alb-controller-sa"
-    }
   }
 
   tags = var.tags
@@ -167,7 +164,6 @@ module "agc" {
   resource_group_name = azurerm_resource_group.main.name
 
   subnet_id                   = module.network.subnet_ids.agc
-  alb_controller_principal_id = module.identity.identity_principal_ids.alb
 
   tags = var.tags
 }
