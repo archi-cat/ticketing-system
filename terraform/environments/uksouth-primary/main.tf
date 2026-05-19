@@ -99,7 +99,6 @@ module "aks" {
 
   location            = var.location
   resource_group_name = azurerm_resource_group.main.name
-  node_resource_group = azurerm_resource_group.main.name
   cluster_name        = "aks-ticketing-uksouth"
 
   system_subnet_id = module.network.subnet_ids.aks_system

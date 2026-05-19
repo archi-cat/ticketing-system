@@ -8,23 +8,6 @@ variable "resource_group_name" {
   type        = string
 }
 
-variable "node_resource_group" {
-  description = <<-EOT
-    Optional override for the AKS-managed node resource group (VMSS,
-    kubelet identity, add-on identities like the ALB Controller UAMI,
-    auto-created NSGs and disks).
-
-    Setting this to the same RG as the rest of the regional deployment
-    means the AGC add-on grants its auto-created UAMI permissions on
-    this RG, which already contains our Terraform-created AGC. No
-    additional role assignments needed.
-
-    Default null preserves AKS's standard 'mc_*' RG behaviour.
-  EOT
-  type        = string
-  default     = null
-}
-
 variable "cluster_name" {
   description = "AKS cluster name"
   type        = string
