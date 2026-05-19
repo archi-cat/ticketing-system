@@ -32,17 +32,6 @@ variable "subnet_id" {
   type        = string
 }
 
-variable "alb_controller_principal_id" {
-  description = <<-EOT
-    Principal (object) ID of the ALB Controller UAMI. Used in role
-    assignments scoped to this module's AGC resource and the AGC subnet.
-
-    The UAMI is created by the identity module — wire this via
-    module.identity.identity_principal_ids.alb.
-  EOT
-  type        = string
-}
-
 variable "tags" {
   description = "Tags applied to all resources in this module."
   type        = map(string)

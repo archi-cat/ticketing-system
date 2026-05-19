@@ -19,6 +19,29 @@ Both modes are first-class supported by Microsoft. The choice affects
 lifecycle ownership, audit story, disaster recovery, and how AGC fits
 with the rest of the infrastructure as code.
 
+## Update — 2026-05-19
+
+The original decision (BYO with Terraform-managed role assignments) was
+correct in spirit but interacted poorly with the AKS managed AGC add-on.
+The add-on auto-provisions the ALB Controller's UAMI and grants it role
+assignments on the AKS node resource group — not on our Terraform-created
+AGC resource.
+
+The resolution (see ADR-0015) is to co-locate the node RG with the
+regional RG. With co-location:
+
+- The add-on grants permissions on the regional RG (where it expects AGC
+  to be in managed mode)
+- Our Terraform-created AGC lives in the regional RG
+- The add-on's permissions cover our AGC automatically
+
+Consequence: The AGC module no longer creates role assignments. Its
+responsibility is purely "provision AGC resources" — the identity layer
+is owned entirely by the AKS add-on.
+
+The identity module's `alb` entry was removed; the AGC add-on's UAMI is
+fully outside Terraform.
+
 ## Decision
 
 We use **BYO mode**. The AGC resource is provisioned by the `agc`

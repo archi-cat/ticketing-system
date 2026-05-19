@@ -86,8 +86,9 @@ NOTE: The AGC Azure resource is provisioned by Terraform (see the agc
 module). What this step enables is the in-cluster ALB Controller add-on
 that watches Gateway resources and programs the AGC accordingly. This
 configuration setting is not yet supported by the azurerm Terraform
-provider, so it must be enabled via az rest. Run after the
-cluster exists, once per cluster:
+provider, so it must be enabled via az rest. Once `terraform apply` 
+finishes, run the add-on enable command (preview features must already
+be registered — see Phase 0.1):
 
 ```powershell
 $RG = "rg-ticketing-uksouth"
@@ -122,8 +123,16 @@ kubectl get pods -n kube-system | Select-String alb-controller
 kubectl get gatewayclass azure-alb-external
 ```
 
-All three should return content. If any return nothing, wait another
-few minutes and re-check.
+After ~3-5 minutes, two things will be true:
+
+1. The Gateway API CRDs are installed in the cluster
+2. The AKS managed UAMI `applicationloadbalancer-aks-ticketing-uksouth`
+   exists in the regional resource group (thanks to node RG co-location —
+   see ADR-0015) and has been granted `AppGw for Containers Configuration
+   Manager` and `Network Contributor` automatically against the regional RG.
+
+These auto-granted role assignments cover our Terraform-created AGC,
+which means no additional role assignment configuration is needed.
 
 ## Phase 2 — Database bootstrap
 
