@@ -4,11 +4,6 @@ metadata:
   name: ticketing
   namespace: ticketing
   annotations:
-    # Tells AGC which Frontend to associate this Gateway with.
-    # The Terraform module created an AGC instance; this annotation links
-    # the Gateway to it. The value is set per-region in the overlay.
-    alb.networking.azure.io/alb-namespace: azure-alb-system
-    alb.networking.azure.io/alb-name: PLACEHOLDER
 spec:
   gatewayClassName: azure-alb-external
   listeners:
