@@ -19,28 +19,21 @@ Both modes are first-class supported by Microsoft. The choice affects
 lifecycle ownership, audit story, disaster recovery, and how AGC fits
 with the rest of the infrastructure as code.
 
-## Update — 2026-05-19
+## Update — 2026-05-20
 
-The original decision (BYO with Terraform-managed role assignments) was
-correct in spirit but interacted poorly with the AKS managed AGC add-on.
-The add-on auto-provisions the ALB Controller's UAMI and grants it role
-assignments on the AKS node resource group — not on our Terraform-created
-AGC resource.
+The AKS ingress controller add-on grants its UAMI permissions scoped to 
+the node RG only. Our AGC and VNet are in the regional RG, so the AGC
+module grants the UAMI:
 
-The resolution (see ADR-0015) is to co-locate the node RG with the
-regional RG. With co-location:
-
-- The add-on grants permissions on the regional RG (where it expects AGC
-  to be in managed mode)
-- Our Terraform-created AGC lives in the regional RG
-- The add-on's permissions cover our AGC automatically
-
-Consequence: The AGC module no longer creates role assignments. Its
-responsibility is purely "provision AGC resources" — the identity layer
-is owned entirely by the AKS add-on.
-
-The identity module's `alb` entry was removed; the AGC add-on's UAMI is
-fully outside Terraform.
+- AppGw for Containers Configuration Manager — scoped to the AGC
+  resource.
+- Network Contributor — scoped to the VNet. A subnet-scoped assignment
+  is insufficient: the controller's subnet-association reconciliation
+  touches the parent VNet. VNet scope is the documented minimum and is
+  tighter than RG scope (which would extend the grant to any future
+  VNet added to the RG). No Reader role is granted — Network Contributor
+  already includes network reads, and a broader Reader would expose
+  non-network resources for no demonstrated need.
 
 ## Decision
 

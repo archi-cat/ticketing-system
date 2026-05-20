@@ -1,17 +1,22 @@
 terraform {
   required_providers {
     azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 4.0"
+      source = "hashicorp/azurerm"
+    }
+    azapi = {
+      source = "Azure/azapi"
+    }
+    time = {
+      source = "hashicorp/time"
     }
   }
-  required_version = ">= 1.9.0"
 }
 
 resource "azurerm_kubernetes_cluster" "main" {
   name                = var.cluster_name
   location            = var.location
   resource_group_name = var.resource_group_name
+  node_resource_group = var.node_resource_group
   dns_prefix          = var.cluster_name
   kubernetes_version  = var.kubernetes_version
 
@@ -112,4 +117,44 @@ resource "azurerm_kubernetes_cluster_node_pool" "user" {
   lifecycle {
     ignore_changes = [node_count]
   }
+}
+
+# ─── AGC and Gateway API add-ons ──────────────────────────────────────────────
+# The azurerm provider doesn't surface the ingressProfile settings that
+# enable the Application Gateway for Containers add-on and the managed
+# Gateway API installation. We use the azapi provider to PATCH these onto
+# the cluster.
+#
+# This installs:
+# - The ALB Controller into kube-system
+# - The Gateway API CRDs
+# - The AKS-managed UAMI 'applicationloadbalancer-<cluster-name>' in the
+#   node resource group, with role assignments scoped to the node RG
+#
+# depends_on ensures the cluster fully exists before we patch it.
+
+resource "azapi_update_resource" "ingress_profile" {
+  type        = "Microsoft.ContainerService/managedClusters@2025-09-02-preview"
+  resource_id = azurerm_kubernetes_cluster.main.id
+
+  body = {
+    properties = {
+      ingressProfile = {
+        applicationLoadBalancer = {
+          enabled = true
+        }
+        gatewayAPI = {
+          installation = "Standard"
+        }
+      }
+    }
+  }
+
+  depends_on = [azurerm_kubernetes_cluster.main]
+}
+
+# In the aks module, after azapi_update_resource.ingress_profile
+resource "time_sleep" "ingress_profile_settle" {
+  depends_on      = [azapi_update_resource.ingress_profile]
+  create_duration = "180s"
 }

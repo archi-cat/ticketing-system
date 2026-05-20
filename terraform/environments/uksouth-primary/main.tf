@@ -4,7 +4,14 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.5"
     }
-
+    azapi = {
+      source  = "Azure/azapi"
+      version = "~> 2.2"
+    }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.12"
+    }
     http = {
       source  = "hashicorp/http"
       version = "~> 3.4"
@@ -17,6 +24,11 @@ provider "azurerm" {
   subscription_id = var.subscription_id
   features {}
   skip_provider_registration = true
+}
+
+provider "azapi" {
+  # Inherits auth from the same Azure CLI / OIDC context as azurerm.
+  # No explicit config needed.
 }
 
 data "azurerm_client_config" "current" {}
@@ -99,6 +111,7 @@ module "aks" {
 
   location            = var.location
   resource_group_name = azurerm_resource_group.main.name
+  node_resource_group = "${var.resource_group_name}-aks-nodes"
   cluster_name        = "aks-ticketing-uksouth"
 
   system_subnet_id = module.network.subnet_ids.aks_system
@@ -120,6 +133,22 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
   # skip_service_principal_aad_check is needed because the kubelet identity
   # is managed and may not be visible to AAD by the time the assignment runs
   skip_service_principal_aad_check = true
+}
+
+# Look up the ALB Controller UAMI auto-provisioned by the AGC add-on.
+#
+# This data source depends on the AKS module's ingress_profile output.
+# Because that output comes from a resource created during apply, Terraform
+# defers this data read to apply time — after the add-on is enabled and
+# the UAMI exists.
+#
+# The add-on creates this UAMI in the node resource group with a
+# deterministic name: 'applicationloadbalancer-<cluster-name>'.
+data "azurerm_user_assigned_identity" "alb_controller_addon" {
+  name                = "applicationloadbalancer-${module.aks.cluster_name}"
+  resource_group_name = module.aks.node_resource_group
+
+  depends_on = [module.aks]
 }
 
 # ── Workload Identity ─────────────────────────────────────────────────────────
@@ -162,7 +191,9 @@ module "agc" {
   location            = var.location
   resource_group_name = azurerm_resource_group.main.name
 
-  subnet_id = module.network.subnet_ids.agc
+  subnet_id                   = module.network.subnet_ids.agc
+  vnet_id                     = module.network.vnet_id
+  alb_controller_principal_id = data.azurerm_user_assigned_identity.alb_controller_addon.principal_id
 
   tags = var.tags
 }

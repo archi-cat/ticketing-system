@@ -8,6 +8,16 @@ variable "resource_group_name" {
   type        = string
 }
 
+variable "node_resource_group" {
+  description = <<-EOT
+    Name of the AKS-managed node resource group (VMSS, kubelet identity,
+    add-on identities, NSGs, disks). Azure requires this to differ from
+    the cluster's own resource group. Setting it explicitly makes the
+    name predictable for downstream lookups.
+  EOT
+  type        = string
+}
+
 variable "cluster_name" {
   description = "AKS cluster name"
   type        = string
