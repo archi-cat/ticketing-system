@@ -161,8 +161,8 @@ resource "azapi_update_resource" "ingress_profile" {
   # landing in that window is rejected with AKSOperationPreempted.
   # Retry on that specific error — it clears once the prior op finishes.
   retry = {
-    error_message_regex = ["AKSOperationPreempted"]
-    interval_seconds    = 30
+    error_message_regex  = ["AKSOperationPreempted"]
+    interval_seconds     = 30
     max_interval_seconds = 120
   }
 
