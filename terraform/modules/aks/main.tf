@@ -119,6 +119,13 @@ resource "azurerm_kubernetes_cluster_node_pool" "user" {
   }
 }
 
+# Brief settle window after the cluster reports ready, before we PATCH it.
+# Reduces the chance of colliding with AKS post-provisioning operations.
+resource "time_sleep" "cluster_settle" {
+  depends_on      = [azurerm_kubernetes_cluster.main]
+  create_duration = "60s"
+}
+
 # ─── AGC and Gateway API add-ons ──────────────────────────────────────────────
 # The azurerm provider doesn't surface the ingressProfile settings that
 # enable the Application Gateway for Containers add-on and the managed
@@ -130,8 +137,6 @@ resource "azurerm_kubernetes_cluster_node_pool" "user" {
 # - The Gateway API CRDs
 # - The AKS-managed UAMI 'applicationloadbalancer-<cluster-name>' in the
 #   node resource group, with role assignments scoped to the node RG
-#
-# depends_on ensures the cluster fully exists before we patch it.
 
 resource "azapi_update_resource" "ingress_profile" {
   type        = "Microsoft.ContainerService/managedClusters@2025-09-02-preview"
@@ -150,7 +155,22 @@ resource "azapi_update_resource" "ingress_profile" {
     }
   }
 
-  depends_on = [azurerm_kubernetes_cluster.main]
+  # AKS allows only one mutating operation on a cluster at a time. The
+  # cluster can finish creating (provisioningState=Succeeded) while
+  # internal post-provisioning operations are still settling. A PATCH
+  # landing in that window is rejected with AKSOperationPreempted.
+  # Retry on that specific error — it clears once the prior op finishes.
+  retry = {
+    error_message_regex  = ["AKSOperationPreempted"]
+    interval_seconds     = 30
+    max_interval_seconds = 120
+  }
+
+  depends_on = [time_sleep.cluster_settle]
+
+  timeouts {
+    update = "30m"
+  }
 }
 
 # In the aks module, after azapi_update_resource.ingress_profile
