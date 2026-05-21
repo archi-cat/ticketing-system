@@ -46,6 +46,18 @@ assignments reference it.
   azapi patches one property. Because azurerm doesn't model ingressProfile,
   there's no plan-time tug-of-war — but it's a pattern to be aware of.
 
+## Operational note — AKSOperationPreempted
+
+AKS permits only one mutating operation on a cluster at a time. The
+cluster can report provisioningState=Succeeded while post-provisioning
+operations are still settling. The ingress_profile PATCH can land in
+that window and be rejected with AKSOperationPreempted.
+
+Mitigation: the azapi_update_resource has a retry block matching that
+error, plus a brief time_sleep before the PATCH. The retry is what
+guarantees eventual success; the sleep reduces how often the retry
+path is exercised.
+
 ## Preview feature note
 
 The preview features ApplicationLoadBalancerPreview and
