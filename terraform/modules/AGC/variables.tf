@@ -23,11 +23,33 @@ variable "resource_group_name" {
   type        = string
 }
 
+variable "vnet_id" {
+  description = <<-EOT
+    Resource ID of the VNet containing the AGC subnet. The ALB Controller
+    UAMI is granted Network Contributor at this scope — its subnet
+    reconciliation touches the VNet, so subnet scope is insufficient.
+
+    Use module.network.vnet_id.
+  EOT
+  type        = string
+}
+
 variable "subnet_id" {
   description = <<-EOT
     Resource ID of the AGC subnet. The subnet must have the
     Microsoft.ServiceNetworking/trafficControllers delegation. Use
     module.network.subnet_ids.agc.
+  EOT
+  type        = string
+}
+
+variable "alb_controller_principal_id" {
+  description = <<-EOT
+    Principal (object) ID of the ALB Controller UAMI. Used in role
+    assignments scoped to this module's AGC resource and the AGC subnet.
+
+    The UAMI is created by the identity module — wire this via
+    module.identity.identity_principal_ids.alb.
   EOT
   type        = string
 }

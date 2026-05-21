@@ -35,3 +35,27 @@ resource "azurerm_application_load_balancer_subnet_association" "this" {
 
   tags = var.tags
 }
+
+# ─── Role assignments for the ALB Controller ─────────────────────────────────
+# The AGC add-on grants its UAMI permissions scoped to the AKS node RG.
+# Our AGC and VNet live in the regional RG, so we grant the same UAMI the
+# two roles it needs on our resources:
+#
+# - AppGw for Containers Configuration Manager — on the AGC resource, so
+#   the controller can program routes, frontends, and associations.
+# - Network Contributor — on the VNet. The controller's subnet-association
+#   reconciliation touches the subnet's parent VNet, so a subnet-scoped
+#   assignment is insufficient; VNet scope is the documented minimum and
+#   keeps the grant tighter than RG scope.
+
+resource "azurerm_role_assignment" "alb_controller_config_manager" {
+  scope                = azurerm_application_load_balancer.this.id
+  role_definition_name = "AppGw for Containers Configuration Manager"
+  principal_id         = var.alb_controller_principal_id
+}
+
+resource "azurerm_role_assignment" "alb_controller_vnet_network_contributor" {
+  scope                = var.vnet_id
+  role_definition_name = "Network Contributor"
+  principal_id         = var.alb_controller_principal_id
+}

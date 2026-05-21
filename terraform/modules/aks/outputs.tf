@@ -23,8 +23,18 @@ output "cluster_identity_principal_id" {
   value       = azurerm_kubernetes_cluster.main.identity[0].principal_id
 }
 
+# Surface the ingress_profile resource so consumers can depend on it —
+# the add-on UAMI doesn't exist until this has been applied.
+output "ingress_profile_id" {
+  description = "ID of the azapi ingress_profile update — used as a dependency anchor."
+  value       = azapi_update_resource.ingress_profile.id
+}
 output "node_resource_group" {
-  description = "Auto-generated resource group containing the AKS node pool VMs and supporting resources"
+  description = <<-EOT
+    Name of the AKS-managed node resource group. The AGC add-on's UAMI
+    (applicationloadbalancer-<cluster-name>) is created here once the
+    ingress_profile resource has been applied.
+  EOT
   value       = azurerm_kubernetes_cluster.main.node_resource_group
 }
 

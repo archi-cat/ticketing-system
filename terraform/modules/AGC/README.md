@@ -113,7 +113,7 @@ longest step).
 | `azurerm_application_load_balancer` | The AGC instance itself |
 | `azurerm_application_load_balancer_frontend` | Public-facing endpoint with managed public IP |
 | `azurerm_application_load_balancer_subnet_association` | Binds AGC to the AKS VNet via the AGC subnet |
-| `azurerm_role_assignment` × 2 | Grants the ALB Controller UAMI the permissions it needs on the AGC resource and the AGC subnet |
+| `azurerm_role_assignment` × 2 | Grants the ALB Controller UAMI the permissions it needs on the AGC resource and the AGC vnet |
 
 ## Inputs
 
@@ -123,6 +123,7 @@ longest step).
 | `location` | Azure region |
 | `resource_group_name` | Target resource group |
 | `subnet_id` | AGC subnet — must have the Microsoft.ServiceNetworking/trafficControllers delegation. Use `module.network.subnet_ids.agc`. |
+| `vnet_id` | AGC vnet. Use `module.network.vnet_ids`. |
 | `alb_controller_principal_id` | Principal ID of the ALB Controller UAMI (created by the identity module). Use `module.identity.identity_principal_ids.alb`. |
 | `tags` | Resource tags |
 
