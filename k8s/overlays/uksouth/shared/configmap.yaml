@@ -11,7 +11,7 @@ data:
   POSTGRES_DATABASE: ticketing
   POSTGRES_USER: ${POSTGRES_USER}             # the UAMI display name per service
   REDIS_HOST: ${REDIS_HOSTNAME}
-  REDIS_PORT: "10000"        
+  REDIS_PORT: "10000"
   REDIS_USE_TLS: "true"
   REDIS_USE_ENTRA_ID: "true"                  # SSL port
   SERVICEBUS_FULLY_QUALIFIED_NAMESPACE: ${SERVICEBUS_FQDN}

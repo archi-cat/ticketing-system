@@ -21,7 +21,7 @@ jobs:
   deploy:
     permissions:
       id-token: write
-      contents: read 
+      contents: read
     uses: ./.github/workflows/_deploy-common.yml
     with:
       unit: worker
