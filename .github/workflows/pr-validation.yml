@@ -77,9 +77,9 @@ jobs:
       - name: Build overlays
         run: |
           set -euo pipefail
-          for overlay in k8s/overlays/*/; do
-            echo "==> Building $overlay"
-            kubectl kustomize "$overlay" > /dev/null
+          for kustomization in $(find k8s -name kustomization.yaml -printf '%h\n' | sort); do
+            echo "==> Building $kustomization"
+            kubectl kustomize "$kustomization" > /dev/null
           done
 
   # ── Terraform — runs against all environment compositions ───────────────────
