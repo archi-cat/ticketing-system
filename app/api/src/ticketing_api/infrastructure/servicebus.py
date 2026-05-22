@@ -120,8 +120,7 @@ class ServiceBusPublisher:
         sender = self._senders.get(topic)
         if sender is None:
             raise RuntimeError(
-                f"No sender configured for topic {topic!r}. "
-                f"Available: {list(self._senders.keys())}"
+                f"No sender configured for topic {topic!r}. Available: {list(self._senders.keys())}"
             )
 
         message = ServiceBusMessage(

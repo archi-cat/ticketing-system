@@ -8,7 +8,7 @@
 repos:
   # ── Generic hygiene ────────────────────────────────────────────────────────
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -25,7 +25,7 @@ repos:
   # The official ruff pre-commit repo. Scoped to app/ so it doesn't try to
   # lint anything outside the service code.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.15.14
     hooks:
       - id: ruff
         name: ruff (lint)
@@ -39,7 +39,7 @@ repos:
   # The pre-commit-terraform collection. trivy is added in a later commit,
   # once the existing Terraform has been triaged against it.
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.96.3
+    rev: v1.105.0
     hooks:
       - id: terraform_fmt
       - id: terraform_validate

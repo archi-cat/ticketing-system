@@ -53,8 +53,7 @@ class BookingService:
 
             if reservation.is_expired:
                 raise ReservationExpiredError(
-                    f"Reservation {reservation_id} expired at "
-                    f"{reservation.expires_at.isoformat()}"
+                    f"Reservation {reservation_id} expired at {reservation.expires_at.isoformat()}"
                 )
 
             transitioned = await reservations_repo.transition_status(
