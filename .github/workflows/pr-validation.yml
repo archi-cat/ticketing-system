@@ -3,13 +3,13 @@ name: PR Validation
 on:
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
+    # No paths / paths-ignore — this workflow MUST run on every PR.
+    # The jobs below are required status checks in the branch ruleset;
+    # if the workflow were path-filtered, an excluded PR would never
+    # report those checks and would deadlock in "pending" forever.
+    # Instead, each job runs always but skips its real work when its
+    # paths didn't change (see the `changes` job).
 
-# Cancel previous runs when a new commit is pushed to the same PR
 concurrency:
   group: pr-validation-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -19,9 +19,40 @@ permissions:
   pull-requests: write
 
 jobs:
+  # ── Detect which areas changed ──────────────────────────────────────────────
+  # Computes per-area booleans consumed by the validation jobs below.
+  # This is what lets the required checks be conditional without being
+  # path-filtered at the workflow level.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      k8s: ${{ steps.filter.outputs.k8s }}
+      terraform: ${{ steps.filter.outputs.terraform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Filter paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            python:
+              - 'app/**'
+              - '.github/workflows/pr-validation.yml'
+            k8s:
+              - 'k8s/**'
+              - '.github/workflows/pr-validation.yml'
+            terraform:
+              - 'terraform/**'
+              - '.github/workflows/pr-validation.yml'
+
   # ── Python services ─────────────────────────────────────────────────────────
   python:
     name: Python — ${{ matrix.service }}
+    needs: changes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -32,10 +63,17 @@ jobs:
         working-directory: app/${{ matrix.service }}
 
     steps:
+      - name: Skip notice
+        if: needs.changes.outputs.python != 'true'
+        working-directory: .
+        run: echo "No changes under app/ — Python validation skipped."
+
       - name: Checkout
+        if: needs.changes.outputs.python == 'true'
         uses: actions/checkout@v4
 
       - name: Install uv
+        if: needs.changes.outputs.python == 'true'
         uses: astral-sh/setup-uv@v4
         with:
           version: "0.5.13"
@@ -43,38 +81,52 @@ jobs:
           cache-dependency-glob: app/${{ matrix.service }}/uv.lock
 
       - name: Set up Python
+        if: needs.changes.outputs.python == 'true'
         run: uv python install 3.13
 
       - name: Install dependencies
+        if: needs.changes.outputs.python == 'true'
         run: uv sync --frozen
 
       - name: Ruff format check
+        if: needs.changes.outputs.python == 'true'
         run: uv run ruff format --check .
 
       - name: Ruff lint
+        if: needs.changes.outputs.python == 'true'
         run: uv run ruff check .
 
       - name: Mypy
+        if: needs.changes.outputs.python == 'true'
         run: uv run mypy src
 
       - name: Pytest
+        if: needs.changes.outputs.python == 'true'
         run: uv run pytest --tb=short
 
   # ── Kustomize manifests ─────────────────────────────────────────────────────
   kustomize:
     name: Kustomize build
+    needs: changes
     runs-on: ubuntu-latest
 
     steps:
+      - name: Skip notice
+        if: needs.changes.outputs.k8s != 'true'
+        run: echo "No changes under k8s/ — Kustomize build skipped."
+
       - name: Checkout
+        if: needs.changes.outputs.k8s == 'true'
         uses: actions/checkout@v4
 
       - name: Set up kubectl
+        if: needs.changes.outputs.k8s == 'true'
         uses: azure/setup-kubectl@v4
         with:
           version: "v1.32.0"
 
       - name: Build overlays
+        if: needs.changes.outputs.k8s == 'true'
         run: |
           set -euo pipefail
           for kustomization in $(find k8s -name kustomization.yaml -printf '%h\n' | sort); do
@@ -85,23 +137,32 @@ jobs:
   # ── Terraform — runs against all environment compositions ───────────────────
   terraform:
     name: Terraform fmt + validate
+    needs: changes
     runs-on: ubuntu-latest
 
     steps:
+      - name: Skip notice
+        if: needs.changes.outputs.terraform != 'true'
+        run: echo "No changes under terraform/ — Terraform validation skipped."
+
       - name: Checkout
+        if: needs.changes.outputs.terraform == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Terraform
+        if: needs.changes.outputs.terraform == 'true'
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.9.0"
           terraform_wrapper: false
 
       - name: Terraform fmt check
+        if: needs.changes.outputs.terraform == 'true'
         run: terraform fmt -check -recursive
         working-directory: terraform
 
       - name: Validate each environment
+        if: needs.changes.outputs.terraform == 'true'
         run: |
           set -euo pipefail
           for env_dir in terraform/environments/*/; do
@@ -114,6 +175,7 @@ jobs:
           done
 
       - name: Validate each module
+        if: needs.changes.outputs.terraform == 'true'
         run: |
           set -euo pipefail
           for module_dir in terraform/modules/*/ terraform/modules/data/*/; do
@@ -127,6 +189,7 @@ jobs:
           done
 
       - name: Validate shared resources
+        if: needs.changes.outputs.terraform == 'true'
         run: |
           set -euo pipefail
           for shared_dir in terraform/shared/*/; do
