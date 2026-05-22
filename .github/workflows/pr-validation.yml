@@ -30,6 +30,7 @@ jobs:
       python: ${{ steps.filter.outputs.python }}
       k8s: ${{ steps.filter.outputs.k8s }}
       terraform: ${{ steps.filter.outputs.terraform }}
+      precommit: ${{ steps.filter.outputs.precommit }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,6 +49,44 @@ jobs:
             terraform:
               - 'terraform/**'
               - '.github/workflows/pr-validation.yml'
+            precommit:
+              - 'app/**'
+              - 'terraform/**'
+              - 'k8s/**'
+              - '.pre-commit-config.yaml'
+              - '.github/workflows/pr-validation.yml'
+
+  # ── Pre-commit hooks ────────────────────────────────────────────────────────
+  pre-commit:
+    name: Pre-commit hooks
+    needs: changes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Skip notice
+        if: needs.changes.outputs.precommit != 'true'
+        run: echo "No relevant changes — pre-commit skipped."
+
+      - name: Checkout
+        if: needs.changes.outputs.precommit == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: needs.changes.outputs.precommit == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Set up Terraform
+        if: needs.changes.outputs.precommit == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Run pre-commit
+        if: needs.changes.outputs.precommit == 'true'
+        uses: pre-commit/action@v3.0.1
 
   # ── Python services ─────────────────────────────────────────────────────────
   python:
