@@ -8,7 +8,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: ${ACR_LOGIN_SERVER}/ticketing-api:${IMAGE_TAG_API}
+          image: ${ACR_LOGIN_SERVER}/ticketing-api:${IMAGE_TAG}
           env:
             - name: POSTGRES_USER
               value: ${UAMI_API_NAME}
