@@ -1,0 +1,103 @@
+name: Deploy Gateway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'k8s/base/gateway/**'
+      - 'k8s/overlays/uksouth/gateway/**'
+      - '.github/workflows/deploy-gateway.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-gateway
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy the cluster Gateway
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform init (uksouth-primary state)
+        working-directory: terraform/environments/uksouth-primary
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=uksouth-primary.tfstate"
+
+      - name: Read Terraform outputs
+        id: tf
+        working-directory: terraform/environments/uksouth-primary
+        run: |
+          set -euo pipefail
+          echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)" >> "$GITHUB_OUTPUT"
+          echo "resource_group_name=$(terraform output -raw resource_group_name)" >> "$GITHUB_OUTPUT"
+          echo "agc_id=$(terraform output -raw agc_id)" >> "$GITHUB_OUTPUT"
+          echo "agc_frontend_id=$(terraform output -raw agc_frontend_id)" >> "$GITHUB_OUTPUT"
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group "${{ steps.tf.outputs.resource_group_name }}" \
+            --name "${{ steps.tf.outputs.aks_cluster_name }}" \
+            --overwrite-existing
+
+      - name: Install kubelogin
+        run: |
+          curl -L -o kubelogin.zip https://github.com/Azure/kubelogin/releases/download/v0.1.5/kubelogin-linux-amd64.zip
+          unzip kubelogin.zip
+          sudo mv bin/linux_amd64/kubelogin /usr/local/bin/
+
+      - name: Convert kubeconfig to use Azure CLI auth
+        run: kubelogin convert-kubeconfig -l azurecli
+
+      - name: Render gateway manifests
+        env:
+          AGC_ID:          ${{ steps.tf.outputs.agc_id }}
+          AGC_FRONTEND_ID: ${{ steps.tf.outputs.agc_frontend_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p k8s-rendered
+          kubectl kustomize k8s/overlays/uksouth/gateway | envsubst > k8s-rendered/gateway.yaml
+          echo "::group::Rendered gateway manifest"
+          cat k8s-rendered/gateway.yaml
+          echo "::endgroup::"
+
+      - name: Apply gateway manifest
+        run: kubectl apply -f k8s-rendered/gateway.yaml
+
+      - name: Wait for gateway to be programmed
+        run: |
+          set -euo pipefail
+          # Wait for the Gateway's Programmed condition to be True
+          kubectl wait gateway/ticketing -n ticketing \
+            --for=condition=Programmed \
+            --timeout=5m
+
+      - name: Show gateway status
+        run: |
+          kubectl get gateway ticketing -n ticketing -o wide
+          kubectl get gateway ticketing -n ticketing \
+            -o jsonpath='{.status.addresses[0].value}'

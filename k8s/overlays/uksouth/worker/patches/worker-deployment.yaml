@@ -8,7 +8,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: ${ACR_LOGIN_SERVER}/ticketing-worker:${IMAGE_TAG_WORKER}
+          image: ${ACR_LOGIN_SERVER}/ticketing-worker:${IMAGE_TAG}
           env:
             - name: POSTGRES_USER
               value: ${UAMI_WORKER_NAME}

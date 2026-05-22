@@ -8,7 +8,7 @@ spec:
     spec:
       containers:
         - name: scheduler
-          image: ${ACR_LOGIN_SERVER}/ticketing-scheduler:${IMAGE_TAG_SCHEDULER}
+          image: ${ACR_LOGIN_SERVER}/ticketing-scheduler:${IMAGE_TAG}
           env:
             - name: POSTGRES_USER
               value: ${UAMI_SCHEDULER_NAME}
