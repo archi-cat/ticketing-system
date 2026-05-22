@@ -77,8 +77,8 @@ This project is being built in phases. Each phase produces a working, demoable s
 |---|---|---|
 | 0 | Repository scaffolding, cost guardrails | ✅ Complete |
 | 1 | Single-region application foundation | ✅ Complete |
-| 2 | Production hardening (Workload Identity, Private Endpoints, OpenTelemetry) | 🚧 In progress |
-| 3 | Testing and CI maturity | ⬜ Not started |
+| 2 | Deployment & CI maturity | 🚧 In progress |
+| 3 | Production hardening | ⬜ Not started |
 | 4 | Second region deployment | ⬜ Not started |
 | 5 | Front Door + active-passive failover | ⬜ Not started |
 | 6 | Disaster recovery automation | ⬜ Not started |
