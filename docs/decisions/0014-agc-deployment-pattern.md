@@ -21,7 +21,7 @@ with the rest of the infrastructure as code.
 
 ## Update — 2026-05-20
 
-The AKS ingress controller add-on grants its UAMI permissions scoped to 
+The AKS ingress controller add-on grants its UAMI permissions scoped to
 the node RG only. Our AGC and VNet are in the regional RG, so the AGC
 module grants the UAMI:
 

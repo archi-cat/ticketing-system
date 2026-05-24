@@ -51,9 +51,9 @@ def _handler(
     status, error_code = _EXCEPTION_MAP[exc_class]
 
     async def handle(_request: Request, exc: Exception) -> Response:
-        assert isinstance(
-            exc, TicketingError
-        ), f"Handler for {exc_class.__name__} received {type(exc).__name__}"
+        assert isinstance(exc, TicketingError), (
+            f"Handler for {exc_class.__name__} received {type(exc).__name__}"
+        )
         return JSONResponse(
             status_code=status,
             content=ErrorResponse(

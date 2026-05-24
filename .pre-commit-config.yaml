@@ -1,0 +1,50 @@
+# Pre-commit hooks for the ticketing-system repo.
+#
+# Local:  install once with `pre-commit install` — hooks then run on `git commit`.
+# CI:     the pr-validation workflow runs `pre-commit run --all-files`.
+#
+# Run manually across the whole repo:  pre-commit run --all-files
+
+repos:
+  # ── Generic hygiene ────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1024']
+      - id: check-yaml
+        # Kustomize and some K8s manifests use multi-document YAML and
+        # custom tags; allow multi-doc, don't choke on unknown tags.
+        args: ['--allow-multiple-documents']
+      - id: check-json
+
+  # ── Python — ruff (lint + format) ──────────────────────────────────────────
+  # The official ruff pre-commit repo. Scoped to app/ so it doesn't try to
+  # lint anything outside the service code.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.14
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        args: ['--fix']
+        files: ^app/
+      - id: ruff-format
+        name: ruff (format)
+        files: ^app/
+
+  # ── Terraform — fmt + validate ─────────────────────────────────────────────
+  # The pre-commit-terraform collection. trivy is added in a later commit,
+  # once the existing Terraform has been triaged against it.
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.105.0
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+        # validate needs `terraform init` to have run per-directory.
+        # The hook handles this, but with -backend=false so it doesn't
+        # need real backend credentials.
+        args:
+          - '--init-args=-backend=false'

@@ -15,15 +15,15 @@ module "identity" {
   name_prefix         = "uami-ticketing-uksouth"
 
   oidc_issuer_url      = module.aks.oidc_issuer_url
-  
+
   service_accounts = {
-    api       = { 
-      namespace = "ticketing",   
-      service_account = "api-service-account" 
+    api       = {
+      namespace = "ticketing",
+      service_account = "api-service-account"
     }
-    worker    = { 
-      namespace = "ticketing",   
-      service_account = "worker-service-account" 
+    worker    = {
+      namespace = "ticketing",
+      service_account = "worker-service-account"
     }
   }
 
