@@ -20,6 +20,10 @@ resource "azurerm_kubernetes_cluster" "main" {
   dns_prefix          = var.cluster_name
   kubernetes_version  = var.kubernetes_version
 
+  # RBAC is enabled by default on AKS and cannot be disabled; stating it
+  # explicitly documents the intent and satisfies static analysis.
+  role_based_access_control_enabled = true
+
   # ── Workload Identity ───────────────────────────────────────────────────────
   # OIDC issuer must be enabled so Azure AD can validate tokens issued by the
   # cluster. workload_identity_enabled installs the mutating webhook that
