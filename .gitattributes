@@ -1,0 +1,30 @@
+# Normalise line endings. Without this, Windows git and WSL git disagree
+# about CRLF vs LF and produce phantom diffs on shared files.
+
+# Default: every text file is stored with LF in the repo, and checked
+# out with LF. Git auto-detects which files are text.
+* text=auto eol=lf
+
+# Explicitly LF for everything that must be LF to function correctly:
+*.sh        text eol=lf
+*.tf        text eol=lf
+*.yaml      text eol=lf
+*.yml       text eol=lf
+*.py        text eol=lf
+*.md        text eol=lf
+*.json      text eol=lf
+.gitignore  text eol=lf
+.trivyignore text eol=lf
+.gitattributes text eol=lf
+
+# If you have any Windows-specific scripts that genuinely need CRLF:
+*.ps1       text eol=crlf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# Binary files — never touch line endings
+*.png       binary
+*.jpg       binary
+*.gif       binary
+*.pdf       binary
+*.zip       binary
