@@ -104,11 +104,40 @@ resource "azurerm_postgresql_flexible_server_configuration" "require_ssl" {
   value     = "ON"
 }
 
+# Enforces the minimum TLS version (TLS 1.2) for connections.
+# Note: Trivy's AZU-0026 rule does not recognise this — it only checks
+# the legacy single-server resource types, not flexible-server
+# configuration parameters. The finding is suppressed in .trivyignore
+# as a false positive; this resource is the actual enforcement.
+resource "azurerm_postgresql_flexible_server_configuration" "ssl_min_version" {
+  name      = "ssl_min_protocol_version"
+  server_id = azurerm_postgresql_flexible_server.main.id
+  value     = "TLSv1.2"
+}
+
 # Useful for application observability — logs queries slower than 1s
 resource "azurerm_postgresql_flexible_server_configuration" "log_min_duration" {
   name      = "log_min_duration_statement"
   server_id = azurerm_postgresql_flexible_server.main.id
   value     = "1000"
+}
+
+resource "azurerm_postgresql_flexible_server_configuration" "log_connections" {
+  name      = "log_connections"
+  server_id = azurerm_postgresql_flexible_server.main.id
+  value     = "on"
+}
+
+resource "azurerm_postgresql_flexible_server_configuration" "connection_throttling" {
+  name      = "connection_throttling"
+  server_id = azurerm_postgresql_flexible_server.main.id
+  value     = "on"
+}
+
+resource "azurerm_postgresql_flexible_server_configuration" "log_checkpoints" {
+  name      = "log_checkpoints"
+  server_id = azurerm_postgresql_flexible_server.main.id
+  value     = "on"
 }
 
 # ── Diagnostic settings ───────────────────────────────────────────────────────
