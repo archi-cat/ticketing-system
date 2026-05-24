@@ -1,0 +1,56 @@
+# Trivy IaC scan suppressions for the ticketing-system Terraform.
+#
+# Every entry below is a CONSCIOUS, REVIEWED decision — not a silenced
+# unknown. Each has a reason and, where relevant, a phase reference.
+# Reviewed: 2026-05-22 (Phase 2, Terraform scanning triage).
+
+# AZU-0041 — AKS API server not restricted to specific IP ranges.
+# AZU-0065 — AKS cluster is not a private cluster.
+# Accepted: the deploy workflows run on GitHub-hosted runners, which have
+# a wide, non-fixed IP range — an authorized-IP allow-list would have to
+# admit nearly all of GitHub's published ranges. A private cluster would
+# require self-hosted runners inside the VNet or `az aks command invoke`.
+# Restricting API access is a Phase 3 hardening item, tracked alongside
+# the Private Endpoints work.
+AVD-AZU-0041
+AVD-AZU-0065
+
+# AZU-0066 — Azure Policy add-on not enabled on AKS.
+# Accepted for Phase 2: the Azure Policy / Gatekeeper add-on is a Phase 3
+# governance item. Deferred to keep the cluster's admission path simple
+# while the deployment pipeline stabilises.
+AVD-AZU-0066
+
+# AZU-0067 — AKS disk encryption set (customer-managed key) not configured.
+# Accepted: AKS node OS and data disks are encrypted at rest by default
+# with platform-managed keys. Customer-managed keys (a disk encryption
+# set) are not required for this project's threat model and add
+# key-custody operational overhead.
+AVD-AZU-0067
+
+# AZU-0016 — Key Vault purge protection not enabled.
+# Accepted while the environment is under active development: purge
+# protection is irreversible, and a soft-deleted vault blocks recreating
+# a vault with the same name. The environment is currently torn down and
+# rebuilt frequently. To be revisited and enabled once the environment
+# is stable (Phase 3).
+AVD-AZU-0016
+
+# AZU-0026 — PostgreSQL minimum TLS version.
+# FALSE POSITIVE — the minimum TLS version IS enforced. The
+# azurerm_postgresql_flexible_server_configuration.ssl_min_version
+# resource sets ssl_min_protocol_version = "TLSv1.2", the correct
+# parameter for PostgreSQL Flexible Server (accepted values: TLSv1.2,
+# TLSv1.3).
+#
+# Trivy's AZU-0026 rule only has clauses for the LEGACY single-server
+# resource types — azurerm_mssql_server (minimum_tls_version) and
+# azurerm_postgresql_server (ssl_minimal_tls_version_enforced). It has
+# no clause for azurerm_postgresql_flexible_server, so it cannot
+# recognise the enforcement regardless of how it is configured.
+# Rule source: https://avd.aquasec.com/misconfig/azu-0026
+#
+# This is a scanner rule gap, not a missing control. The require_ssl
+# and ssl_min_version configuration resources together enforce TLS-only,
+# TLS 1.2-minimum connections.
+AVD-AZU-0026
