@@ -178,6 +178,22 @@ module "identity" {
       namespace       = "ticketing",
       service_account = "scheduler-service-account"
     }
+    # ── Database bootstrap identities ──────────────────────────────────────
+    # db-migrator: runs the migration and event-load Jobs. A non-admin
+    # Postgres Entra principal with DDL + DML rights on the ticketing DB.
+    # Never elevated, never changes state.
+    db-migrator = {
+      namespace       = "ticketing"
+      service_account = "db-migrator-service-account"
+    }
+
+    # db-grant: runs the grant Job only. Has NO standing Postgres rights —
+    # a human elevates it to a Postgres Entra admin for a single grant run,
+    # and the grant Job self-revokes that elevation as its final step.
+    db-grant = {
+      namespace       = "ticketing"
+      service_account = "db-grant-service-account"
+    }
   }
 
   tags = var.tags
