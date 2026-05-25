@@ -239,3 +239,15 @@ jobs:
               terraform validate
             )
           done
+
+      - name: Trivy IaC scan
+        if: needs.changes.outputs.terraform == 'true'
+        # .trivyignore at the repo root is read automatically — the six
+        # triaged suppressions (5 accepted risks + 1 documented false
+        # positive) are honoured. See .trivyignore for the reasons.
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: terraform/
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
