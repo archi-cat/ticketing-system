@@ -1,0 +1,110 @@
+name: Build Bootstrap Images
+
+# Builds, scans, and pushes the database-bootstrap container images.
+# These images back the bootstrap Jobs (db-grant now, db-load-events later).
+# db-migrate is NOT here — it reuses the API image built by deploy-api.yml.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bootstrap/**'
+      - '.github/workflows/build-bootstrap-images.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: build-bootstrap-images
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # One entry per directory under bootstrap/ that has a Dockerfile.
+        # Add db-load-events here when that image lands (PR 2).
+        image: [db-grant]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── Read shared ACR state ─────────────────────────────────────────────
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform init (shared ACR state)
+        working-directory: terraform/shared/acr
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=shared-acr.tfstate"
+
+      - name: Read ACR outputs
+        id: acr
+        working-directory: terraform/shared/acr
+        run: |
+          echo "acr_name=$(terraform output -raw acr_name)" >> "$GITHUB_OUTPUT"
+          echo "acr_login_server=$(terraform output -raw acr_login_server)" >> "$GITHUB_OUTPUT"
+
+      # ── Build, scan, push ─────────────────────────────────────────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Acquire ACR access token
+        id: acr_token
+        run: |
+          TOKEN=$(az acr login --name "${{ steps.acr.outputs.acr_name }}" --expose-token --output tsv --query accessToken)
+          echo "::add-mask::$TOKEN"
+          echo "acr_token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.acr.outputs.acr_login_server }}
+          username: "00000000-0000-0000-0000-000000000000"
+          password: ${{ steps.acr_token.outputs.acr_token }}
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: bootstrap/${{ matrix.image }}
+          file: bootstrap/${{ matrix.image }}/Dockerfile
+          push: false
+          load: true
+          tags: |
+            ${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ matrix.image }}:${{ github.sha }}
+            ${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ matrix.image }}:latest
+          cache-from: type=gha,scope=bootstrap-${{ matrix.image }}
+          cache-to: type=gha,scope=bootstrap-${{ matrix.image }},mode=max
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ matrix.image }}:${{ github.sha }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          ignore-unfixed: true
+
+      - name: Push image to ACR
+        run: |
+          docker push "${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ matrix.image }}:${{ github.sha }}"
+          docker push "${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ matrix.image }}:latest"
