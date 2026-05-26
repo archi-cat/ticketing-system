@@ -86,173 +86,125 @@ AGC role assignments are created against it.
 
 ## Phase 2 — Database bootstrap
 
-PostgreSQL is VNet-injected and not reachable from outside the VNet, so
-these steps run from a temporary Linux VM inside the VNet.
+The application database is bootstrapped by in-cluster Kubernetes Jobs —
+there is no temporary VM. See ADR-0018 for the design.
 
-### 2.1 Create a temporary VM in the VNet
+Three operations, run in order on a fresh environment:
 
-The VM goes in the `private-endpoints` subnet — the same subnet that
-PostgreSQL's Private Endpoint is in, so the VM can reach PostgreSQL
-without crossing any other network boundary.
+1. **Grant** — registers the application UAMIs as PostgreSQL Entra
+   principals and grants them privileges. Human-gated.
+2. **Migrate** — `alembic upgrade head`. (Covered in a later section /
+   PR — db-migrate Job.)
+3. **Data load** — loads event data. (Later section / PR.)
 
-```powershell
-$RG = "rg-ticketing-uksouth"
-$VNET = (az network vnet list -g $RG --query '[0].name' -o tsv)
-$SUBNET_ID = az network vnet subnet show -g $RG --vnet-name $VNET --name snet-private-endpoints --query id -o tsv
+This section covers the **grant** step.
 
-az vm create `
-    --resource-group $RG `
-    --name vm-bootstrap-temp `
-    --image Ubuntu2204 `
-    --size Standard_B1s `
-    --subnet $SUBNET_ID `
-    --admin-username azureuser `
-    --generate-ssh-keys `
-    --public-ip-sku Standard
+### 2.0 Prerequisites
 
-$VM_IP = az vm show -d -g $RG -n vm-bootstrap-temp --query publicIps -o tsv
-```
+- The regional infrastructure is deployed (`infra-uksouth` has run) — the
+  two bootstrap UAMIs (`db-migrator`, `db-grant`) exist.
+- The `ticketing` namespace exists in the cluster (created by the first
+  application deploy, or the `shared` Kustomize unit).
+- The bootstrap images have been built and pushed:
+  `build-bootstrap-images` has run at least once. On a brand-new
+  environment, confirm `ticketing-db-grant:latest` exists in ACR before
+  proceeding — otherwise the grant Job fails with `ImagePullBackOff`.
 
-### 2.1a Open SSH access at the subnet NSG
+### 2.1 Step 1 — Elevate the db-grant identity (human action)
 
-Two layers of NSG apply to the VM:
+The grant Job runs as the `db-grant` UAMI, which has no standing
+PostgreSQL rights. Before triggering the workflow, a human must elevate
+it to a PostgreSQL Entra admin.
 
-1. The NIC-level NSG (auto-created by `az vm create`) — allows SSH by default
-2. The subnet-level NSG (from the network module) — locked down by default
-
-Both must permit the traffic. The NIC NSG is fine; the subnet NSG needs
-a temporary rule for your IP. Get the subnet NSG name and add the rule:
-
-```powershell
-# Find your current public IP
-$MY_IP = (Invoke-RestMethod -Uri "https://api.ipify.org")
-
-# Find the NSG attached to the private-endpoints subnet
-$NSG_ID = az network vnet subnet show `
-    --resource-group $RG `
-    --vnet-name $VNET `
-    --name private-endpoints `
-    --query networkSecurityGroup.id -o tsv
-$NSG_NAME = ($NSG_ID -split "/")[-1]
-
-# Add a high-priority temporary rule. Priority 200 puts it above most
-# default rules; you can adjust if there are conflicts.
-az network nsg rule create `
-    --resource-group $RG `
-    --nsg-name $NSG_NAME `
-    --name temp-bootstrap-ssh `
-    --priority 200 `
-    --direction Inbound `
-    --access Allow `
-    --protocol Tcp `
-    --source-address-prefixes $MY_IP `
-    --destination-port-ranges 22 `
-    --description "Temporary SSH access for bootstrap VM. Remove after bootstrap completes."
-```
-
-> **Security note**: Pin the source IP narrowly. Never use `--source-address-prefixes "*"` or `Internet` — that opens SSH to the entire internet.
-
-### 2.2 SSH in and install tooling
+Gather the values:
 
 ```bash
-ssh azureuser@$VM_IP
+# From the regional Terraform state
+cd terraform/environments/uksouth-primary
+
+PG_SERVER=$(terraform output -raw postgres_fqdn | cut -d. -f1)
+DB_GRANT_NAME=$(terraform output -json identity_names | jq -r '."db-grant"')
+DB_GRANT_OBJECT_ID=$(terraform output -json identity_principal_ids | jq -r '."db-grant"')
 ```
 
-Inside the VM:
+Elevate:
 
 ```bash
-sudo apt update
-sudo apt install -y postgresql-client jq git
-curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.local/bin/env
-
-# Log in as YOURSELF (the Entra admin), not the VM's managed identity
-az login --use-device-code
+az postgres flexible-server ad-admin create \
+  --resource-group rg-ticketing-uksouth \
+  --server-name "$PG_SERVER" \
+  --display-name "$DB_GRANT_NAME" \
+  --object-id "$DB_GRANT_OBJECT_ID" \
+  --type ServicePrincipal
 ```
 
-### 2.3 Apply migrations
+This is the one deliberate manual action — it is the human decision to
+permit a privileged database operation. Everything after this is
+automated.
+
+### 2.2 Step 2 — Run the grant workflow
+
+Trigger the `DB Grant` workflow (`db-grant.yml`) from the GitHub Actions
+UI (`workflow_dispatch`).
+
+The workflow will:
+
+1. **Pre-flight** — confirm `db-grant` is in fact an elevated admin. If
+   Step 1 was skipped, the workflow fails here with a clear message
+   rather than letting the Job fail obscurely.
+2. Apply the `db-grant` ServiceAccount and Job.
+3. Wait for the Job, polling for completion. On failure or timeout it
+   dumps the Job description and pod logs.
+4. **Revoke** the `db-grant` elevation — in an `if: always()` step, so it
+   runs whether the Job succeeded or not.
+
+### 2.3 Step 3 — Confirm the outcome
+
+After the workflow completes:
+
+- The workflow's revoke step should report the elevation removed. Confirm
+  `db-grant` is no longer an admin:
 
 ```bash
-git clone https://github.com/<your-username>/ticketing-system.git
-cd ticketing-system/app/api
-
-export POSTGRES_HOST=$(az postgres flexible-server list \
+  az postgres flexible-server ad-admin list \
     --resource-group rg-ticketing-uksouth \
-    --query '[0].fullyQualifiedDomainName' -o tsv)
-export POSTGRES_PORT=5432
-export POSTGRES_DATABASE=ticketing
-export POSTGRES_USER=$(az ad signed-in-user show --query userPrincipalName -o tsv)
-export POSTGRES_USE_WORKLOAD_IDENTITY=true
-export LOG_FORMAT=console
-
-uv sync
-uv run alembic upgrade head
+    --server-name "$PG_SERVER" \
+    --query "[].displayName" -o tsv
 ```
 
-Expected output ends with `Running upgrade -> 20260427_1200, initial schema`.
+  `db-grant` should NOT appear. If it does — for example the workflow was
+  cancelled before the revoke — remove it manually with
+  `az postgres flexible-server ad-admin delete` (see the elevation
+  command above for the parameters).
 
-### 2.4 Run the grant script
+- The grant Job's logs (in the workflow output) end with the registered
+  principals: `api`, `worker`, `scheduler`, `db-migrator`.
 
-The script registers each application UAMI as an Entra-mapped role and
-grants database-level permissions. From the same SSH session:
+### 2.4 If the grant Job fails
 
-```bash
-cd ~/ticketing-system
-pwsh ./scripts/Grant-PostgresWorkloadIdentity.ps1 \
-    -PostgresHost $POSTGRES_HOST \
-    -Database ticketing \
-    -ApiUamiName "uami-ticketing-uksouth-api" \
-    -WorkerUamiName "uami-ticketing-uksouth-worker" \
-    -SchedulerUamiName "uami-ticketing-uksouth-scheduler"
-```
+The workflow dumps `kubectl describe job` and pod logs on failure. Common
+causes:
 
-If `pwsh` isn't installed, install it first:
+- **`ImagePullBackOff`** — the `db-grant` image is not in ACR. Run
+  `build-bootstrap-images` first.
+- **Authentication failure connecting to PostgreSQL** — the pre-flight
+  check should catch a missing elevation, but if the elevation was
+  removed between Step 1 and the Job running, re-elevate and re-run.
+- **`az login` permission errors in the pod** — the workload-identity
+  wiring (the `azure.workload.identity/use` pod label, the
+  ServiceAccount's client-id annotation) is misconfigured.
 
-```bash
-sudo snap install powershell --classic
-```
+The workflow is safe to re-run: it deletes any stale Job first, and the
+grant SQL is idempotent. Re-running requires `db-grant` to be elevated
+again (the previous run revoked it) — repeat Step 1, then Step 2.
 
-The script prints `Done.` on success.
+### 2.5 When to re-run the grant
 
-### 2.5 Seed sample data
-
-```bash
-pwsh ./scripts/Seed-SampleEvents.ps1 \
-    -PostgresHost $POSTGRES_HOST \
-    -Database ticketing \
-    -PostgresUser $POSTGRES_USER
-```
-
-Output lists four seeded events.
-
-### 2.6 Tear down the VM AND the NSG rule
-
-When you've finished the bootstrap and exited SSH:
-
-```powershell
-# Remove the temporary NSG rule first
-az network nsg rule delete `
-    --resource-group $RG `
-    --nsg-name $NSG_NAME `
-    --name temp-bootstrap-ssh
-
-# Delete the VM and its auxiliary resources
-az vm delete -g $RG -n vm-bootstrap-temp --yes
-az network nic delete -g $RG -n vm-bootstrap-tempVMNic
-az network public-ip delete -g $RG -n vm-bootstrap-tempPublicIP
-
-Start-Sleep -Seconds 10
-az disk list -g $RG --query "[?contains(name,'vm-bootstrap-temp')].name" -o tsv |
-    ForEach-Object { az disk delete -g $RG -n $_ --yes }
-```
-
-Verify the rule is gone:
-
-```powershell
-az network nsg rule list -g $RG --nsg-name $NSG_NAME --query "[?name=='temp-bootstrap-ssh']"
-# Should return []
-```
+The grant only needs re-running when the **set of principals changes** —
+e.g. a new application service with its own UAMI is added. It does **not**
+need re-running for ordinary code deploys or schema migrations. On a
+fully fresh environment (new PostgreSQL server) it must be run once before
+migrations.
 
 ## Phase 3 — Application deployment
 
