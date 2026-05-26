@@ -1,0 +1,90 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-grant
+  namespace: ticketing
+  labels:
+    app.kubernetes.io/part-of: ticketing-system
+    app.kubernetes.io/component: db-bootstrap
+spec:
+  # ── Re-runnability and lifecycle ──────────────────────────────────────────
+  # backoffLimit 0: do NOT retry on failure. The grant Job runs as an
+  # elevated identity inside a human-opened privilege window — an automatic
+  # retry could run again after the workflow has revoked elevation, or mask
+  # a real SQL error. One attempt; failure is surfaced to the workflow.
+  backoffLimit: 0
+
+  # Auto-delete the Job (and its pod) 600s after it finishes. Long enough
+  # for the triggering workflow to read logs; short enough not to accumulate
+  # old Job objects across many runs.
+  ttlSecondsAfterFinished: 600
+
+  # Wall-clock backstop. The triggering workflow's poll loop also times out
+  # at 300s; this ensures the Job is killed even if nothing is watching it.
+  activeDeadlineSeconds: 300
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: ticketing-system
+        app.kubernetes.io/component: db-bootstrap
+        # REQUIRED for workload identity. The AKS webhook keys off this
+        # POD label to inject the federated token file and AZURE_* env
+        # vars. Without it, entrypoint.sh cannot acquire a token.
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: db-grant-service-account
+      restartPolicy: Never
+
+      containers:
+        - name: db-grant
+          image: ${ACR_LOGIN_SERVER}/ticketing-db-grant:${IMAGE_TAG}
+
+          env:
+            # ── Postgres connection targets ──────────────────────────────
+            - name: PGHOST
+              value: ${POSTGRES_FQDN}
+            - name: APP_DATABASE
+              value: ${POSTGRES_DATABASE_NAME}
+            - name: MGMT_DATABASE
+              value: postgres
+
+            # ── Principal names — the four roles grant.sh registers ──────
+            # db-grant connects AS this principal (it is the elevated admin)
+            - name: GRANT_PRINCIPAL
+              value: ${DB_GRANT_UAMI_NAME}
+            - name: API_UAMI
+              value: ${API_UAMI_NAME}
+            - name: WORKER_UAMI
+              value: ${WORKER_UAMI_NAME}
+            - name: SCHEDULER_UAMI
+              value: ${SCHEDULER_UAMI_NAME}
+            - name: MIGRATOR_UAMI
+              value: ${DB_MIGRATOR_UAMI_NAME}
+
+          volumeMounts:
+            # readOnlyRootFilesystem is true, but `az login` must write its
+            # profile somewhere. A small emptyDir gives the CLI a writable
+            # config location without making the whole rootfs writable.
+            - name: azure-config
+              mountPath: /tmp/azure
+
+          # No ports, no probes — a Job runs to completion, it does not serve.
+
+          # ── Pod hardening ────────────────────────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+
+      volumes:
+        - name: azure-config
+          emptyDir: {}
+
+      # ── Pod-level security context ──────────────────────────────────────
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
