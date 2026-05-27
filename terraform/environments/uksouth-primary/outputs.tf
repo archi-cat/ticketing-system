@@ -37,6 +37,11 @@ output "agc_frontend_id" {
 
 # ── Identity ──────────────────────────────────────────────────────────────────
 
+output "workload_identity_names" {
+  description = "Map of service name to UAMI display name"
+  value       = module.identity.identity_names
+}
+
 output "workload_identity_client_ids" {
   description = "Map of service name to UAMI client ID — annotated on Kubernetes service accounts"
   value       = module.identity.identity_client_ids
@@ -77,6 +82,16 @@ output "servicebus_fqdn" {
 output "keyvault_uri" {
   description = "Key Vault URI"
   value       = module.keyvault.vault_uri
+}
+
+output "storage_blob_endpoint" {
+  description = "Primary blob service endpoint URL — used by the db-load-events Job"
+  value       = module.storage.blob_endpoint
+}
+
+output "storage_events_container_name" {
+  description = "Name of the events blob container"
+  value       = module.storage.events_container_name
 }
 
 # ── Observability ─────────────────────────────────────────────────────────────

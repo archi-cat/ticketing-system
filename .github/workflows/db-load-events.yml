@@ -1,30 +1,40 @@
-name: DB Migrate
+name: DB Load Events
 
-# Manually triggered. Runs `alembic upgrade head` as an in-cluster Job,
-# using the API image and the db-migrator identity.
+# Manually triggered. Downloads a JSON blob from the event-data storage
+# account and inserts the events into the database via the load-events
+# command in the API image.
 #
-# Will be auto-wired into the deploy pipeline after a few clean manual
-# runs (see ADR-0018, future work).
+# Prerequisites:
+#   - db-grant and db-migrate have run at least once on this environment.
+#   - The target blob exists in the storage account (upload it first with
+#     `az storage blob upload --auth-mode login` — see the runbook).
+#
+# The command is idempotent: events whose id already exists are skipped, so
+# the workflow is safe to re-run with the same blob.
 on:
   workflow_dispatch:
     inputs:
+      blob_name:
+        description: "Blob filename in the events container (e.g. sample-events.json)"
+        type: string
+        required: true
       image_tag:
-        description: "API image tag to run migrations from (default: latest)"
+        description: "API image tag to use (default: latest)"
         type: string
         required: false
         default: latest
 
 concurrency:
-  group: db-migrate
-  cancel-in-progress: false   # never interrupt a migration in flight
+  group: db-load-events
+  cancel-in-progress: false
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  migrate:
-    name: Run database migrations
+  load-events:
+    name: Load events into database
     runs-on: ubuntu-latest
 
     steps:
@@ -59,9 +69,11 @@ jobs:
         working-directory: terraform/environments/uksouth-primary
         run: |
           set -euo pipefail
-          echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)" >> "$GITHUB_OUTPUT"
-          echo "resource_group_name=$(terraform output -raw resource_group_name)" >> "$GITHUB_OUTPUT"
-          echo "migrator_uami_name=$(terraform output -json workload_identity_names | jq -r '."db-migrator"')" >> "$GITHUB_OUTPUT"
+          echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)"           >> "$GITHUB_OUTPUT"
+          echo "resource_group_name=$(terraform output -raw resource_group_name)"     >> "$GITHUB_OUTPUT"
+          echo "storage_blob_endpoint=$(terraform output -raw storage_blob_endpoint)" >> "$GITHUB_OUTPUT"
+          echo "storage_container=$(terraform output -raw storage_events_container_name)" >> "$GITHUB_OUTPUT"
+          echo "migrator_uami_name=$(terraform output -json workload_identity_names | jq -r '."db-migrator"')"     >> "$GITHUB_OUTPUT"
           echo "migrator_client_id=$(terraform output -json workload_identity_client_ids | jq -r '."db-migrator"')" >> "$GITHUB_OUTPUT"
 
       - name: Terraform init (shared ACR state)
@@ -97,11 +109,8 @@ jobs:
         run: kubelogin convert-kubeconfig -l azurecli
 
       # ── Ensure the db-migrator service account exists ─────────────────────
-      # Mirrors what db-grant.yml does for its own SA — each bootstrap
-      # workflow ensures its own prerequisites. Idempotent: kubectl apply of
-      # an unchanged ServiceAccount is a no-op. The db-load-events Job (PR 2,
-      # later) also uses this SA — whichever db-migrator workflow runs first
-      # creates it.
+      # The SA is shared with db-migrate. Whichever bootstrap workflow runs
+      # first creates it; subsequent applies are no-ops.
       - name: Ensure db-migrator service account
         env:
           DB_MIGRATOR_CLIENT_ID: ${{ steps.tf.outputs.migrator_client_id }}
@@ -110,45 +119,48 @@ jobs:
           envsubst < k8s/bootstrap/db-migrate/serviceaccount.yaml | kubectl apply -f -
 
       # ── Apply the Job ─────────────────────────────────────────────────────
-      - name: Delete any stale db-migrate Job
-        run: kubectl delete job db-migrate -n ticketing --ignore-not-found
+      - name: Delete any stale db-load-events Job
+        run: kubectl delete job db-load-events -n ticketing --ignore-not-found
 
       - name: Render and apply the Job
         env:
-          ACR_LOGIN_SERVER:      ${{ steps.acr.outputs.acr_login_server }}
-          IMAGE_TAG:             ${{ inputs.image_tag }}
-          DB_MIGRATOR_UAMI_NAME: ${{ steps.tf.outputs.migrator_uami_name }}
+          ACR_LOGIN_SERVER:            ${{ steps.acr.outputs.acr_login_server }}
+          IMAGE_TAG:                   ${{ inputs.image_tag }}
+          DB_MIGRATOR_UAMI_NAME:       ${{ steps.tf.outputs.migrator_uami_name }}
+          EVENTS_STORAGE_ACCOUNT_URL:  ${{ steps.tf.outputs.storage_blob_endpoint }}
+          EVENTS_CONTAINER_NAME:       ${{ steps.tf.outputs.storage_container }}
+          EVENTS_BLOB_NAME:            ${{ inputs.blob_name }}
         run: |
           set -euo pipefail
-          envsubst < k8s/bootstrap/db-migrate/job.yaml | kubectl apply -f -
+          envsubst < k8s/bootstrap/db-load-events/job.yaml | kubectl apply -f -
 
       # ── Wait for the Job ──────────────────────────────────────────────────
-      - name: Wait for the migration Job
+      - name: Wait for the load-events Job
         run: |
           set -euo pipefail
           DEADLINE=$(( $(date +%s) + 300 ))
           while true; do
-            COMPLETE=$(kubectl get job db-migrate -n ticketing \
+            COMPLETE=$(kubectl get job db-load-events -n ticketing \
               -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)
-            FAILED=$(kubectl get job db-migrate -n ticketing \
+            FAILED=$(kubectl get job db-load-events -n ticketing \
               -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)
 
             if [ "$COMPLETE" = "True" ]; then
-              echo "Migration Job completed successfully."
-              kubectl logs -n ticketing -l job-name=db-migrate --tail=200
+              echo "Load-events Job completed successfully."
+              kubectl logs -n ticketing -l job-name=db-load-events --tail=200
               break
             fi
             if [ "$FAILED" = "True" ]; then
-              echo "::error::Migration Job failed."
-              kubectl describe job db-migrate -n ticketing
+              echo "::error::Load-events Job failed."
+              kubectl describe job db-load-events -n ticketing
               echo "=== Pod logs ==="
-              kubectl logs -n ticketing -l job-name=db-migrate --tail=200
+              kubectl logs -n ticketing -l job-name=db-load-events --tail=200
               exit 1
             fi
             if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-              echo "::error::Timed out waiting for the migration Job."
-              kubectl describe job db-migrate -n ticketing
-              kubectl logs -n ticketing -l job-name=db-migrate --tail=200
+              echo "::error::Timed out waiting for the load-events Job."
+              kubectl describe job db-load-events -n ticketing
+              kubectl logs -n ticketing -l job-name=db-load-events --tail=200
               exit 1
             fi
             sleep 5
