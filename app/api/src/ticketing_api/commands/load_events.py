@@ -105,7 +105,7 @@ async def _download_blob(account_url: str, container_name: str, blob_name: str) 
             credential=credential,
         ) as blob_client:
             stream = await blob_client.download_blob()
-            return await stream.readall()  # type: ignore[no-any-return]
+            return await stream.readall()
 
 
 def _require_env(name: str) -> str:
