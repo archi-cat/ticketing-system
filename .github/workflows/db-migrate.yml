@@ -1,0 +1,155 @@
+name: DB Migrate
+
+# Manually triggered. Runs `alembic upgrade head` as an in-cluster Job,
+# using the API image and the db-migrator identity.
+#
+# Will be auto-wired into the deploy pipeline after a few clean manual
+# runs (see ADR-0018, future work).
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "API image tag to run migrations from (default: latest)"
+        type: string
+        required: false
+        default: latest
+
+concurrency:
+  group: db-migrate
+  cancel-in-progress: false   # never interrupt a migration in flight
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  migrate:
+    name: Run database migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── Read Terraform outputs ────────────────────────────────────────────
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform init (uksouth-primary state)
+        working-directory: terraform/environments/uksouth-primary
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=uksouth-primary.tfstate"
+
+      - name: Read Terraform outputs
+        id: tf
+        working-directory: terraform/environments/uksouth-primary
+        run: |
+          set -euo pipefail
+          echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)" >> "$GITHUB_OUTPUT"
+          echo "resource_group_name=$(terraform output -raw resource_group_name)" >> "$GITHUB_OUTPUT"
+          echo "migrator_uami_name=$(terraform output -json workload_identity_names | jq -r '."db-migrator"')" >> "$GITHUB_OUTPUT"
+          echo "migrator_client_id=$(terraform output -json workload_identity_client_ids | jq -r '."db-migrator"')" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform init (shared ACR state)
+        working-directory: terraform/shared/acr
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=shared-acr.tfstate"
+
+      - name: Read ACR outputs
+        id: acr
+        working-directory: terraform/shared/acr
+        run: |
+          echo "acr_login_server=$(terraform output -raw acr_login_server)" >> "$GITHUB_OUTPUT"
+
+      # ── Cluster credentials ───────────────────────────────────────────────
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group "${{ steps.tf.outputs.resource_group_name }}" \
+            --name "${{ steps.tf.outputs.aks_cluster_name }}" \
+            --overwrite-existing
+
+      - name: Install kubelogin
+        run: |
+          curl -L -o kubelogin.zip https://github.com/Azure/kubelogin/releases/download/v0.1.5/kubelogin-linux-amd64.zip
+          unzip kubelogin.zip
+          sudo mv bin/linux_amd64/kubelogin /usr/local/bin/
+
+      - name: Convert kubeconfig to Azure CLI auth
+        run: kubelogin convert-kubeconfig -l azurecli
+
+      # ── Ensure the db-migrator service account exists ─────────────────────
+      # Mirrors what db-grant.yml does for its own SA — each bootstrap
+      # workflow ensures its own prerequisites. Idempotent: kubectl apply of
+      # an unchanged ServiceAccount is a no-op. The db-load-events Job (PR 2,
+      # later) also uses this SA — whichever db-migrator workflow runs first
+      # creates it.
+      - name: Ensure db-migrator service account
+        env:
+          DB_MIGRATOR_CLIENT_ID: ${{ steps.tf.outputs.migrator_client_id }}
+        run: |
+          set -euo pipefail
+          envsubst < k8s/bootstrap/db-migrate/serviceaccount.yaml | kubectl apply -f -
+
+      # ── Apply the Job ─────────────────────────────────────────────────────
+      - name: Delete any stale db-migrate Job
+        run: kubectl delete job db-migrate -n ticketing --ignore-not-found
+
+      - name: Render and apply the Job
+        env:
+          ACR_LOGIN_SERVER:      ${{ steps.acr.outputs.acr_login_server }}
+          IMAGE_TAG:             ${{ inputs.image_tag }}
+          DB_MIGRATOR_UAMI_NAME: ${{ steps.tf.outputs.migrator_uami_name }}
+        run: |
+          set -euo pipefail
+          envsubst < k8s/bootstrap/db-migrate/job.yaml | kubectl apply -f -
+
+      # ── Wait for the Job ──────────────────────────────────────────────────
+      - name: Wait for the migration Job
+        run: |
+          set -euo pipefail
+          DEADLINE=$(( $(date +%s) + 300 ))
+          while true; do
+            COMPLETE=$(kubectl get job db-migrate -n ticketing \
+              -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)
+            FAILED=$(kubectl get job db-migrate -n ticketing \
+              -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)
+
+            if [ "$COMPLETE" = "True" ]; then
+              echo "Migration Job completed successfully."
+              kubectl logs -n ticketing -l job-name=db-migrate --tail=200
+              break
+            fi
+            if [ "$FAILED" = "True" ]; then
+              echo "::error::Migration Job failed."
+              kubectl describe job db-migrate -n ticketing
+              echo "=== Pod logs ==="
+              kubectl logs -n ticketing -l job-name=db-migrate --tail=200
+              exit 1
+            fi
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              echo "::error::Timed out waiting for the migration Job."
+              kubectl describe job db-migrate -n ticketing
+              kubectl logs -n ticketing -l job-name=db-migrate --tail=200
+              exit 1
+            fi
+            sleep 5
+          done

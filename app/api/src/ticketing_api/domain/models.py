@@ -45,6 +45,30 @@ class Event(BaseModel):
         return v
 
 
+class EventCreate(BaseModel):
+    """Input for bulk-creating events from an operator-supplied JSON file.
+
+    available_seats is derived from total_seats on insert; created_at and
+    updated_at are set by the database server default.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    name: str
+    venue: str
+    starts_at: datetime
+    total_seats: int = Field(ge=1)
+    price_pence: int = Field(ge=0)
+
+    @field_validator("starts_at")
+    @classmethod
+    def _ensure_tz_aware(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("starts_at must be timezone-aware")
+        return v
+
+
 # ── Reservation ──────────────────────────────────────────────────────────────
 
 

@@ -61,8 +61,8 @@ jobs:
           echo "postgres_fqdn=$(terraform output -raw postgres_fqdn)" >> "$GITHUB_OUTPUT"
           echo "postgres_database_name=$(terraform output -raw postgres_database_name)" >> "$GITHUB_OUTPUT"
 
-          # UAMI names — from the identity module's identity_names map
-          NAMES=$(terraform output -json identity_names)
+          # UAMI names — from the workload_identity_names output
+          NAMES=$(terraform output -json workload_identity_names)
           {
             echo "api_uami_name=$(echo "$NAMES"        | jq -r '.api')"
             echo "worker_uami_name=$(echo "$NAMES"     | jq -r '.worker')"
@@ -73,11 +73,11 @@ jobs:
 
           # db-grant UAMI principal (object) ID — needed to identify it as
           # an AD admin for the pre-flight check and the revoke.
-          PRINCIPALS=$(terraform output -json identity_principal_ids)
+          PRINCIPALS=$(terraform output -json workload_identity_principal_ids)
           echo "grant_principal_id=$(echo "$PRINCIPALS" | jq -r '."db-grant"')" >> "$GITHUB_OUTPUT"
 
           # db-grant SA client ID — for the ServiceAccount annotation
-          CLIENTS=$(terraform output -json identity_client_ids)
+          CLIENTS=$(terraform output -json workload_identity_client_ids)
           echo "grant_client_id=$(echo "$CLIENTS" | jq -r '."db-grant"')" >> "$GITHUB_OUTPUT"
 
       # ── Read shared ACR state (for the image location) ────────────────────

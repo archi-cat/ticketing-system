@@ -1,8 +1,4 @@
-"""Events repository — read-only data access for events.
-
-In Phase 1 events are seeded via a script; the API doesn't create them.
-A future admin API would extend this repository with create/update.
-"""
+"""Events repository — data access for events."""
 
 from __future__ import annotations
 
@@ -11,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ticketing_api.domain.models import Event
+from ticketing_api.domain.models import Event, EventCreate
 from ticketing_api.repositories.orm import EventORM
 
 
@@ -66,6 +62,43 @@ class EventsRepository:
             .values(available_seats=EventORM.available_seats + seat_count)
         )
         await self._session.execute(stmt)
+
+    async def create(self, events: list[EventCreate]) -> int:
+        """Bulk-insert events. Skips rows whose id already exists.
+
+        Returns the number of rows actually inserted (duplicates are silently
+        ignored via ON CONFLICT DO NOTHING).
+        """
+        from datetime import UTC, datetime
+
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        if not events:
+            return 0
+
+        now = datetime.now(UTC)
+        stmt = (
+            pg_insert(EventORM)
+            .values(
+                [
+                    {
+                        "id": e.id,
+                        "name": e.name,
+                        "venue": e.venue,
+                        "starts_at": e.starts_at,
+                        "total_seats": e.total_seats,
+                        "available_seats": e.total_seats,
+                        "price_pence": e.price_pence,
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                    for e in events
+                ]
+            )
+            .on_conflict_do_nothing(index_elements=["id"])
+        )
+        result = await self._session.execute(stmt)
+        return result.rowcount
 
 
 def _to_domain(orm: EventORM) -> Event:

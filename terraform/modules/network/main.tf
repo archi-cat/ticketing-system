@@ -125,6 +125,7 @@ locals {
     servicebus    = "privatelink.servicebus.windows.net"
     keyvault      = "privatelink.vaultcore.azure.net"
     acr           = "privatelink.azurecr.io"
+    blob          = "privatelink.blob.core.windows.net"
   }
 }
 

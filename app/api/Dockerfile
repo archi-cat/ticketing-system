@@ -28,6 +28,15 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# ── Migration files ───────────────────────────────────────────────────────────
+# alembic.ini and the alembic/ directory (env.py + versions/) so the API
+# image can run `alembic upgrade head` as the db-migrate bootstrap Job.
+# Placed after uv sync — they are not needed for the dependency install,
+# and putting them last keeps a migration-file change from invalidating
+# the expensive sync layer.
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
+
 # ─── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM python:3.13-slim-bookworm AS runtime
 

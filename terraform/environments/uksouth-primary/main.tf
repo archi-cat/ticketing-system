@@ -342,6 +342,37 @@ module "keyvault" {
   tags = var.tags
 }
 
+# ── Event-data storage ────────────────────────────────────────────────────────
+# Storage account holding the JSON event files the db-load-events bootstrap
+# Job loads into the database. Private endpoint for the cluster's read path;
+# public endpoint with an IP allow-list for the operator upload path while
+# no in-cluster upload Job exists (Phase 3 removes the public endpoint).
+
+module "storage" {
+  source = "../../modules/data/storage"
+
+  name                = "stticketinguks${var.name_suffix}"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  private_endpoint_subnet_id = module.network.subnet_ids.private_endpoints
+  private_dns_zone_id        = module.network.private_dns_zone_ids.blob
+
+  # Bare IP — no /32. Azure storage network rules reject a /32 suffix,
+  # which is why this does NOT reuse local.deployer_ip_cidr (that value
+  # is /32-suffixed, used by the Key Vault module which accepts it).
+  allowed_ip_ranges = [chomp(data.http.myip.response_body)]
+
+  # db-migrator reads event files from the events container.
+  blob_reader_principal_ids = {
+    db-migrator = module.identity.identity_principal_ids["db-migrator"]
+  }
+
+  log_analytics_workspace_id = module.observability.log_analytics_workspace_id
+
+  tags = var.tags
+}
+
 # ── Service Bus role assignments ──────────────────────────────────────────────
 # API publishes events → Sender role
 # Worker consumes events → Receiver role

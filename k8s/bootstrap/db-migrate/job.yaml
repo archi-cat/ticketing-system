@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  namespace: ticketing
+  labels:
+    app.kubernetes.io/part-of: ticketing-system
+    app.kubernetes.io/component: db-bootstrap
+spec:
+  # One retry is reasonable here — unlike the grant Job, db-migrate isn't
+  # inside a privilege window, and a transient connection blip on a fresh
+  # cluster is plausible. alembic upgrade head is idempotent (it only
+  # applies migrations not yet recorded), so a retry is safe.
+  backoffLimit: 1
+
+  ttlSecondsAfterFinished: 600
+  activeDeadlineSeconds: 300
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: ticketing-system
+        app.kubernetes.io/component: db-bootstrap
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: db-migrator-service-account
+      restartPolicy: Never
+
+      containers:
+        - name: db-migrate
+          image: ${ACR_LOGIN_SERVER}/ticketing-api:${IMAGE_TAG}
+
+          # Override the image's uvicorn CMD. alembic is on PATH (the venv),
+          # the image's WORKDIR is /app where alembic.ini now lives.
+          command: ["alembic", "upgrade", "head"]
+
+          envFrom:
+            - configMapRef:
+                name: ticketing-base-config
+            - configMapRef:
+                name: ticketing-region-config
+
+          env:
+            # Override the region config's POSTGRES_USER. The migration must
+            # connect as db-migrator — the only principal with CREATE on the
+            # schema. The region config's value is a per-service fill-in;
+            # an explicit env entry wins over envFrom, same pattern as the
+            # api deployment patch.
+            - name: POSTGRES_USER
+              value: ${DB_MIGRATOR_UAMI_NAME}
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault

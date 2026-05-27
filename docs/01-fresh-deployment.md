@@ -93,11 +93,11 @@ Three operations, run in order on a fresh environment:
 
 1. **Grant** — registers the application UAMIs as PostgreSQL Entra
    principals and grants them privileges. Human-gated.
-2. **Migrate** — `alembic upgrade head`. (Covered in a later section /
-   PR — db-migrate Job.)
-3. **Data load** — loads event data. (Later section / PR.)
+2. **Migrate** — `alembic upgrade head`. Creates the schema.
+3. **Data load** — downloads a JSON file from Blob Storage and inserts
+   events into the database.
 
-This section covers the **grant** step.
+All three steps are covered in this section.
 
 ### 2.0 Prerequisites
 
@@ -123,8 +123,8 @@ Gather the values:
 cd terraform/environments/uksouth-primary
 
 PG_SERVER=$(terraform output -raw postgres_fqdn | cut -d. -f1)
-DB_GRANT_NAME=$(terraform output -json identity_names | jq -r '."db-grant"')
-DB_GRANT_OBJECT_ID=$(terraform output -json identity_principal_ids | jq -r '."db-grant"')
+DB_GRANT_NAME=$(terraform output -json workload_identity_names | jq -r '."db-grant"')
+DB_GRANT_OBJECT_ID=$(terraform output -json workload_identity_principal_ids | jq -r '."db-grant"')
 ```
 
 Elevate:
@@ -205,6 +205,147 @@ e.g. a new application service with its own UAMI is added. It does **not**
 need re-running for ordinary code deploys or schema migrations. On a
 fully fresh environment (new PostgreSQL server) it must be run once before
 migrations.
+
+---
+
+### 2.6 Step 2 — Run the migration workflow
+
+**Dependency:** the grant Job (Step 1) must have completed successfully.
+The migration Job connects as the `db-migrator` UAMI; until db-grant has
+registered that identity as a PostgreSQL Entra principal, the connection
+will be rejected.
+
+Trigger the `DB Migrate` workflow (`db-migrate.yml`) from the GitHub Actions
+UI (`workflow_dispatch`). You can optionally specify an image tag; the
+default is `latest`.
+
+The workflow will:
+
+1. Read Terraform outputs to resolve the AKS cluster name, the db-migrator
+   UAMI name, and the ACR login server.
+2. Apply the `db-migrator-service-account` ServiceAccount (idempotent — safe
+   to run even if a previous `db-migrate` or `db-load-events` run already
+   created it).
+3. Delete any stale `db-migrate` Job from a prior run, then render and apply
+   the Job manifest with `envsubst`.
+4. Poll until the Job completes or fails (5-minute timeout), then print the
+   pod logs.
+
+On success the logs will end with Alembic reporting
+`Running upgrade -> 20260427_1200, initial schema`.
+
+### 2.7 If the migration Job fails
+
+The workflow dumps `kubectl describe job` and pod logs on failure. Common
+causes:
+
+- **`ImagePullBackOff`** — the API image is not in ACR. Run `deploy-api.yml`
+  at least once first, or trigger a build manually.
+- **Authentication failure connecting to PostgreSQL** — the db-grant Job has
+  not run yet, or it failed. Check that `db-migrator` is listed in the
+  output of `az postgres flexible-server ad-admin list` (it should NOT appear
+  — it is a non-admin Entra principal registered by `pgaadauth_create_principal`,
+  not an AD admin). If the grant Job never succeeded, re-run Phase 2 Step 1.
+- **Workload Identity token failure** — the pod label
+  `azure.workload.identity/use: "true"` or the ServiceAccount's
+  `azure.workload.identity/client-id` annotation is wrong. Check the
+  `migrator_client_id` Terraform output matches the annotation on the
+  ServiceAccount.
+- **Alembic finds no migrations** — the alembic directory was not copied
+  into the image. Verify the Dockerfile copies `alembic.ini` and `alembic/`.
+
+The workflow is safe to re-run: it deletes the stale Job first, and
+`alembic upgrade head` is idempotent (it skips already-applied revisions).
+
+---
+
+### 2.8 Step 3 — Upload the events JSON file
+
+**Dependency:** the migration Job (Step 2) must have completed successfully.
+The events table must exist before the load Job can insert into it.
+
+The load-events Job reads its input from a JSON blob in the event-data
+storage account. Upload the file before triggering the workflow:
+
+```bash
+# From the regional Terraform state
+cd terraform/environments/uksouth-primary
+STORAGE_ACCOUNT=$(terraform output -raw storage_blob_endpoint | \
+  sed 's|https://||;s|\.blob\.core\.windows\.net.*||')
+
+az storage blob upload \
+  --account-name "$STORAGE_ACCOUNT" \
+  --container-name events \
+  --name sample-events.json \
+  --file data/events/sample-events.json \
+  --auth-mode login
+```
+
+Your Entra ID identity needs `Storage Blob Data Contributor` on the events
+container (or account) to upload. The `db-migrator` UAMI only has reader
+rights.
+
+The JSON file is a top-level array. Each object must have an explicit `id`
+(UUID) so the operation is idempotent — see `data/events/sample-events.json`
+for the format and `docs/decisions/0019-db-load-events-design.md` for the
+full schema.
+
+### 2.9 Step 4 — Run the load-events workflow
+
+Trigger the `DB Load Events` workflow (`db-load-events.yml`) from the GitHub
+Actions UI (`workflow_dispatch`). Supply the blob filename as the
+`blob_name` input (e.g. `sample-events.json`). The `image_tag` input
+defaults to `latest`.
+
+The workflow will:
+
+1. Read Terraform outputs to resolve the AKS cluster, the db-migrator UAMI
+   name, the storage account blob endpoint, and the events container name.
+2. Apply the `db-migrator-service-account` ServiceAccount (idempotent).
+3. Delete any stale `db-load-events` Job, then render and apply the Job
+   manifest with the storage URL, container name, and blob name substituted.
+4. Poll until the Job completes or fails (5-minute timeout), then print the
+   pod logs.
+
+On success the logs will end with a line like:
+`Done — inserted 4 event(s), skipped 0 duplicate(s)`.
+
+Running the workflow again with the same blob is safe — the second run
+inserts nothing (all IDs already exist) and exits with
+`inserted 0 event(s), skipped 4 duplicate(s)`.
+
+### 2.10 If the load-events Job fails
+
+The workflow dumps `kubectl describe job` and pod logs on failure. Common
+causes:
+
+- **`ImagePullBackOff`** — the API image is not in ACR.
+- **Blob not found** — the blob name supplied to the workflow doesn't exist
+  in the storage account. Verify the upload (Step 3) completed and that the
+  filename matches exactly (case-sensitive).
+- **Authentication failure on Storage** — the `db-migrator` UAMI does not
+  have `Storage Blob Data Reader` on the events container. The Terraform
+  `storage` module should have assigned this — check the role assignment
+  exists in the Azure portal or with `az role assignment list`.
+- **Authentication failure on PostgreSQL** — see the same cause in 2.7.
+- **JSON parse error** — the blob content is not valid JSON, or the array
+  elements are missing required fields (`id`, `name`, `venue`, `starts_at`,
+  `total_seats`, `price_pence`). Fix the file, re-upload, and re-run.
+
+The workflow is safe to re-run after fixing the root cause: it deletes the
+stale Job first, and the insert is idempotent.
+
+### 2.11 When to re-run the data load
+
+The load-events workflow can be re-run any time:
+
+- To load a new set of events (upload a new JSON file, supply its name).
+- To reload the same file after a fix — duplicate IDs are silently skipped,
+  so only genuinely new events are inserted.
+
+It does **not** need re-running for code deploys or schema migrations.
+
+---
 
 ## Phase 3 — Application deployment
 

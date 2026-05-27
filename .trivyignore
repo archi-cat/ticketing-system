@@ -54,3 +54,32 @@ AVD-AZU-0016
 # and ssl_min_version configuration resources together enforce TLS-only,
 # TLS 1.2-minimum connections.
 AVD-AZU-0026
+
+# ── Event-data storage account (modules/data/storage) ──────────────────────
+
+# AZU-0057 — Storage account does not have Storage Analytics logging.
+# FALSE POSITIVE — logging IS enabled, via azurerm_monitor_diagnostic_setting
+# (StorageRead / StorageWrite to Log Analytics), the modern Azure Monitor
+# mechanism that Microsoft recommends over legacy Storage Analytics.
+# Trivy's AZU-0057 rule checks for the legacy queue_properties { logging }
+# block — queue-service logging, for a service this account does not run
+# (blob only, no queues). Rule source:
+# https://avd.aquasec.com/misconfig/azure/storage/azu-0057/
+AVD-AZU-0057
+
+# AZU-0058 — Storage account does not use geo-redundant replication.
+# Accepted: LRS is a deliberate choice. The account holds reloadable JSON
+# event files, not irreplaceable data; GRS would be over-provisioning for
+# this project. (Same reasoning class as the AKS disk-encryption-set
+# suppression below.)
+AVD-AZU-0058
+
+# AZU-0060 — Storage account does not use customer-managed keys.
+# Accepted: the account is encrypted at rest by default with
+# platform-managed keys (AES-256). The content is non-sensitive,
+# reloadable event data. Customer-managed keys add key-custody
+# operational overhead and a new failure mode (key inaccessibility
+# renders the account inaccessible) with no corresponding compliance
+# or sensitivity requirement. Matches the platform-managed-encryption
+# decision already made for AKS disks (AZU-0067).
+AVD-AZU-0060

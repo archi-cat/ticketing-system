@@ -1,0 +1,34 @@
+[
+  {
+    "id": "a1b2c3d4-0001-0000-0000-000000000001",
+    "name": "Acoustic Sessions",
+    "venue": "Union Chapel, London",
+    "starts_at": "2026-07-10T19:30:00+00:00",
+    "total_seats": 120,
+    "price_pence": 3500
+  },
+  {
+    "id": "a1b2c3d4-0001-0000-0000-000000000002",
+    "name": "Tech Conference 2026",
+    "venue": "ExCeL, London",
+    "starts_at": "2026-08-25T09:00:00+00:00",
+    "total_seats": 500,
+    "price_pence": 15000
+  },
+  {
+    "id": "a1b2c3d4-0001-0000-0000-000000000003",
+    "name": "Winter Symphony",
+    "venue": "Royal Albert Hall, London",
+    "starts_at": "2026-09-15T19:00:00+00:00",
+    "total_seats": 800,
+    "price_pence": 8500
+  },
+  {
+    "id": "a1b2c3d4-0001-0000-0000-000000000004",
+    "name": "Comedy Night",
+    "venue": "Hackney Empire, London",
+    "starts_at": "2026-07-03T20:00:00+00:00",
+    "total_seats": 400,
+    "price_pence": 2500
+  }
+]
