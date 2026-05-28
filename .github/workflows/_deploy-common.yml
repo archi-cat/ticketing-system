@@ -240,6 +240,43 @@ jobs:
             --namespace ticketing \
             --timeout=5m
 
+      - name: Dump diagnostics on rollout failure
+        if: failure()
+        run: |
+          echo "::group::Deployment description"
+          kubectl describe deployment/${{ inputs.unit }} -n ticketing
+          echo "::endgroup::"
+
+          echo "::group::Pod list"
+          kubectl get pods -n ticketing -l app.kubernetes.io/name=${{ inputs.unit }} -o wide
+          echo "::endgroup::"
+
+          echo "::group::Pod descriptions"
+          kubectl describe pods -n ticketing -l app.kubernetes.io/name=${{ inputs.unit }}
+          echo "::endgroup::"
+
+          echo "::group::Container logs (current)"
+          kubectl logs -n ticketing \
+            -l app.kubernetes.io/name=${{ inputs.unit }} \
+            --all-containers \
+            --tail=100 || true
+          echo "::endgroup::"
+
+          echo "::group::Container logs (previous — crashed containers)"
+          kubectl logs -n ticketing \
+            -l app.kubernetes.io/name=${{ inputs.unit }} \
+            --all-containers \
+            --previous \
+            --tail=100 || true
+          echo "::endgroup::"
+
+          echo "::group::Recent namespace events"
+          kubectl get events -n ticketing \
+            --sort-by=.lastTimestamp \
+            --field-selector involvedObject.name=${{ inputs.unit }} 2>/dev/null || \
+          kubectl get events -n ticketing --sort-by=.lastTimestamp | tail -30
+          echo "::endgroup::"
+
       - name: Verify pods are healthy
         run: |
           kubectl get pods -n ticketing -l app.kubernetes.io/name=${{ inputs.unit }} -o wide
