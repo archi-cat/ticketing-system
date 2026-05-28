@@ -55,6 +55,18 @@ AVD-AZU-0016
 # TLS 1.2-minimum connections.
 AVD-AZU-0026
 
+# AZU-0021 — PostgreSQL server not configured to throttle connections.
+# FALSE POSITIVE — the rule targets the LEGACY single-server resource type.
+# Trivy's AZU-0021 check looks for an azurerm_postgresql_configuration block
+# with name = "connection_throttling". This project uses
+# azurerm_postgresql_flexible_server_configuration — a different resource type
+# that the rule has no clause for, so it fires regardless of configuration.
+# Moreover, connection_throttling is not a valid parameter on PostgreSQL
+# Flexible Server version 16+; Azure removed it and applies the equivalent
+# behaviour at the infrastructure level. There is nothing to configure.
+# Rule source: https://avd.aquasec.com/misconfig/azure/database/azu-0021/
+AVD-AZU-0021
+
 # ── Event-data storage account (modules/data/storage) ──────────────────────
 
 # AZU-0057 — Storage account does not have Storage Analytics logging.

@@ -21,7 +21,7 @@ variable "server_name" {
 variable "postgres_version" {
   description = "PostgreSQL major version"
   type        = string
-  default     = "16"
+  default     = "18"
 }
 
 variable "sku_name" {
