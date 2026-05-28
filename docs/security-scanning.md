@@ -85,3 +85,66 @@ Before adding a suppression, ask:
    finding rather than suppressing it.
 
 See `.trivyignore` for the current set of suppressions and their reasoning.
+
+## Image signing (Cosign)
+
+All container images are signed after push using
+[Cosign](https://docs.sigstore.dev/cosign/overview/) with keyless signing.
+The signature is cryptographically bound to the GitHub Actions workflow
+identity that produced the image — no private key is managed or stored.
+
+### How it works
+
+Keyless signing uses GitHub's OIDC token to obtain a short-lived certificate
+from Sigstore's certificate authority (Fulcio). The certificate binds the
+signature to the specific workflow URL and branch that ran the signing step.
+The signature and certificate are stored as OCI artifacts alongside the image
+in ACR, indexed by the image digest.
+
+Because signatures are indexed by digest (the content hash), a signature
+attached via the SHA-tagged reference is found when verifying by any other tag
+that resolves to the same digest — including `:latest`.
+
+### Where signing happens
+
+| Workflow | Images signed |
+|---|---|
+| `_deploy-common.yml` | `ticketing-api`, `ticketing-worker`, `ticketing-scheduler` |
+| `build-bootstrap-images.yml` | `ticketing-db-grant` |
+
+### Where verification happens
+
+Every workflow that applies a Kubernetes Job or Deployment verifies the image
+signature before running `kubectl apply`. If the image has no valid signature
+from the expected workflow on `main`, the verification step fails and nothing
+is deployed.
+
+| Workflow | Image verified | Expected signing workflow |
+|---|---|---|
+| `_deploy-common.yml` | `ticketing-<unit>` | `_deploy-common.yml@main` |
+| `db-grant.yml` | `ticketing-db-grant` | `build-bootstrap-images.yml@main` |
+| `db-migrate.yml` | `ticketing-api` | `_deploy-common.yml@main` |
+| `db-load-events.yml` | `ticketing-api` | `_deploy-common.yml@main` |
+
+### Verifying an image locally
+
+To verify an image from your workstation (requires `cosign` installed):
+
+```bash
+cosign verify \
+  --certificate-identity \
+    "https://github.com/<org>/ticketing-system/.github/workflows/_deploy-common.yml@refs/heads/main" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  <acr-login-server>/ticketing-api:latest
+```
+
+A successful verification prints the signing certificate details including the
+workflow URL, the commit SHA, and the run ID.
+
+### Phase 3 — cluster-level enforcement
+
+The current implementation enforces signing at the CI/CD level: workflows
+verify before deploying. A future phase will add cluster-level enforcement via
+an admission controller (Ratify or Kyverno with a Cosign policy), which
+prevents any unsigned image from being scheduled in the cluster regardless of
+how it was applied.
