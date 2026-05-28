@@ -136,6 +136,18 @@ jobs:
       - name: Convert kubeconfig to Azure CLI auth
         run: kubelogin convert-kubeconfig -l azurecli
 
+      # ── Verify bootstrap image signature ─────────────────────────────────
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify db-grant image signature
+        run: |
+          cosign verify \
+            --certificate-identity \
+              "${{ github.server_url }}/${{ github.repository }}/.github/workflows/build-bootstrap-images.yml@refs/heads/main" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${{ steps.acr.outputs.acr_login_server }}/ticketing-db-grant:latest"
+
       # ── Apply the ServiceAccount and Job ──────────────────────────────────
       - name: Delete any stale db-grant Job
         run: |
