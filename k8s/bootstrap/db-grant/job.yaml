@@ -49,6 +49,18 @@ spec:
             - name: MGMT_DATABASE
               value: postgres
 
+            # ── Azure CLI config dir ─────────────────────────────────────
+            # az login writes its token cache here. Without this, it tries
+            # ~/.azure/ which is on the read-only root filesystem.
+            - name: AZURE_CONFIG_DIR
+              value: /tmp/azure
+
+            # ── psql connection timeout ──────────────────────────────────
+            # Fail fast (10s) if PostgreSQL is unreachable, rather than
+            # hanging until activeDeadlineSeconds fires.
+            - name: PGCONNECT_TIMEOUT
+              value: "10"
+
             # ── Principal names — the four roles grant.sh registers ──────
             # db-grant connects AS this principal (it is the elevated admin)
             - name: GRANT_PRINCIPAL
