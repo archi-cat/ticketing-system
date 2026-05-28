@@ -110,7 +110,7 @@ jobs:
           set -euo pipefail
           PG_SERVER=$(echo "${{ steps.tf.outputs.postgres_fqdn }}" | cut -d. -f1)
 
-          ADMINS=$(az postgres flexible-server ad-admin list \
+          ADMINS=$(az postgres flexible-server microsoft-entra-admin list \
             --resource-group "${{ env.RESOURCE_GROUP }}" \
             --server-name "$PG_SERVER" \
             --query "[].objectId" -o tsv)
@@ -219,10 +219,10 @@ jobs:
           set -uo pipefail
           PG_SERVER=$(echo "${{ steps.tf.outputs.postgres_fqdn }}" | cut -d. -f1)
 
-          az postgres flexible-server ad-admin delete \
+          az postgres flexible-server microsoft-entra-admin delete \
             --resource-group "${{ env.RESOURCE_GROUP }}" \
             --server-name "$PG_SERVER" \
             --object-id "${{ steps.tf.outputs.grant_principal_id }}" \
             --yes \
             && echo "db-grant elevation revoked." \
-            || echo "ad-admin delete returned non-zero — db-grant is not an admin, which is the desired end state."
+            || echo "microsoft-entra-admin delete returned non-zero — db-grant is not an admin, which is the desired end state."

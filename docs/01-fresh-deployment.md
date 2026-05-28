@@ -130,7 +130,7 @@ DB_GRANT_OBJECT_ID=$(terraform output -json workload_identity_principal_ids | jq
 Elevate:
 
 ```bash
-az postgres flexible-server ad-admin create \
+az postgres flexible-server microsoft-entra-admin create \
   --resource-group rg-ticketing-uksouth \
   --server-name "$PG_SERVER" \
   --display-name "$DB_GRANT_NAME" \
@@ -166,7 +166,7 @@ After the workflow completes:
   `db-grant` is no longer an admin:
 
 ```bash
-  az postgres flexible-server ad-admin list \
+  az postgres flexible-server microsoft-entra-admin list \
     --resource-group rg-ticketing-uksouth \
     --server-name "$PG_SERVER" \
     --query "[].displayName" -o tsv
@@ -174,7 +174,7 @@ After the workflow completes:
 
   `db-grant` should NOT appear. If it does — for example the workflow was
   cancelled before the revoke — remove it manually with
-  `az postgres flexible-server ad-admin delete` (see the elevation
+  `az postgres flexible-server microsoft-entra-admin delete` (see the elevation
   command above for the parameters).
 
 - The grant Job's logs (in the workflow output) end with the registered
@@ -243,7 +243,7 @@ causes:
   at least once first, or trigger a build manually.
 - **Authentication failure connecting to PostgreSQL** — the db-grant Job has
   not run yet, or it failed. Check that `db-migrator` is listed in the
-  output of `az postgres flexible-server ad-admin list` (it should NOT appear
+  output of `az postgres flexible-server microsoft-entra-admin list` (it should NOT appear
   — it is a non-admin Entra principal registered by `pgaadauth_create_principal`,
   not an AD admin). If the grant Job never succeeded, re-run Phase 2 Step 1.
 - **Workload Identity token failure** — the pod label
