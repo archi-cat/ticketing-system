@@ -126,7 +126,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "user" {
 # Brief settle window after the cluster reports ready, before we PATCH it.
 # Reduces the chance of colliding with AKS post-provisioning operations.
 resource "time_sleep" "cluster_settle" {
-  depends_on      = [azurerm_kubernetes_cluster.main]
+  depends_on      = [azurerm_kubernetes_cluster.main, azurerm_kubernetes_cluster_node_pool.user]
   create_duration = "60s"
 }
 
@@ -165,9 +165,9 @@ resource "azapi_update_resource" "ingress_profile" {
   # landing in that window is rejected with AKSOperationPreempted.
   # Retry on that specific error — it clears once the prior op finishes.
   retry = {
-    error_message_regex  = ["AKSOperationPreempted"]
+    error_message_regex  = ["AKSOperationPreempted", "OperationNotAllowed"]
     interval_seconds     = 30
-    max_interval_seconds = 120
+    max_interval_seconds = 300
   }
 
   depends_on = [time_sleep.cluster_settle]

@@ -128,12 +128,6 @@ resource "azurerm_postgresql_flexible_server_configuration" "log_connections" {
   value     = "on"
 }
 
-resource "azurerm_postgresql_flexible_server_configuration" "connection_throttling" {
-  name      = "connection_throttling"
-  server_id = azurerm_postgresql_flexible_server.main.id
-  value     = "on"
-}
-
 resource "azurerm_postgresql_flexible_server_configuration" "log_checkpoints" {
   name      = "log_checkpoints"
   server_id = azurerm_postgresql_flexible_server.main.id

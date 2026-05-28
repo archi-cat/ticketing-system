@@ -24,6 +24,7 @@ provider "azurerm" {
   subscription_id = var.subscription_id
   features {}
   skip_provider_registration = true
+  storage_use_azuread        = true
 }
 
 provider "azapi" {
@@ -348,6 +349,23 @@ module "keyvault" {
 # public endpoint with an IP allow-list for the operator upload path while
 # no in-cluster upload Job exists (Phase 3 removes the public endpoint).
 
+# The azurerm provider (with storage_use_azuread = true) polls the blob
+# service endpoint with an AAD token after creating the storage account.
+# That check requires Storage Blob Data Reader. We grant it to the deployer
+# identity at the resource-group level so it is in place before the account
+# is created, then wait briefly for IAM propagation.
+resource "azurerm_role_assignment" "deployer_storage_blob_reader" {
+  scope                            = azurerm_resource_group.main.id
+  role_definition_name             = "Storage Blob Data Reader"
+  principal_id                     = data.azurerm_client_config.current.object_id
+  skip_service_principal_aad_check = true
+}
+
+resource "time_sleep" "deployer_storage_role_propagation" {
+  depends_on      = [azurerm_role_assignment.deployer_storage_blob_reader]
+  create_duration = "30s"
+}
+
 module "storage" {
   source = "../../modules/data/storage"
 
@@ -371,6 +389,8 @@ module "storage" {
   log_analytics_workspace_id = module.observability.log_analytics_workspace_id
 
   tags = var.tags
+
+  depends_on = [time_sleep.deployer_storage_role_propagation]
 }
 
 # ── Service Bus role assignments ──────────────────────────────────────────────
