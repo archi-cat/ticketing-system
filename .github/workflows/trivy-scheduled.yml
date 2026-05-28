@@ -1,0 +1,163 @@
+name: Trivy Scheduled Scans
+
+# Weekly security scan of the main branch — covers both IaC (Terraform) and
+# the three service images in ACR. Findings are uploaded as SARIF to the
+# GitHub Security → Code scanning tab rather than failing the workflow;
+# the PR and deploy workflows are the enforcement gates.
+#
+# Runs every Monday at 07:00 UTC and on manual dispatch.
+on:
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+jobs:
+  # ── IaC scan ──────────────────────────────────────────────────────────────────
+  # Scans the Terraform source on main. Picks up new Trivy rules published
+  # since the last PR that touched Terraform.
+  scan-iac:
+    name: IaC scan (Terraform)
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF to the Security tab
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Trivy IaC scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: terraform/
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0'       # findings go to SARIF, not workflow failure
+          format: sarif
+          output: trivy-iac.sarif
+
+      - name: Upload IaC SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()           # upload even if the scan step errors
+        with:
+          sarif_file: trivy-iac.sarif
+          category: trivy-iac
+
+  # ── Image scans ───────────────────────────────────────────────────────────────
+  # Pulls each service image from ACR by its :latest tag and scans for CVEs
+  # in installed OS packages and Python dependencies. Catches vulnerabilities
+  # published after the image was built.
+  scan-images:
+    name: Image scans (ACR)
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write          # OIDC federated login to Azure
+      security-events: write   # upload SARIF to the Security tab
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── Discover ACR login server from shared Terraform state ─────────────
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform init (shared ACR state)
+        working-directory: terraform/shared/acr
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=shared-acr.tfstate"
+
+      - name: Read ACR outputs
+        id: acr
+        working-directory: terraform/shared/acr
+        run: |
+          echo "acr_name=$(terraform output -raw acr_name)"               >> "$GITHUB_OUTPUT"
+          echo "acr_login_server=$(terraform output -raw acr_login_server)" >> "$GITHUB_OUTPUT"
+
+      # ── Authenticate to ACR ───────────────────────────────────────────────
+      - name: Acquire ACR access token
+        id: acr_token
+        run: |
+          TOKEN=$(az acr login \
+            --name "${{ steps.acr.outputs.acr_name }}" \
+            --expose-token --output tsv --query accessToken)
+          echo "::add-mask::$TOKEN"
+          echo "acr_token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.acr.outputs.acr_login_server }}
+          username: "00000000-0000-0000-0000-000000000000"
+          password: ${{ steps.acr_token.outputs.acr_token }}
+
+      # ── API image ─────────────────────────────────────────────────────────
+      - name: Scan API image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.acr.outputs.acr_login_server }}/ticketing-api:latest
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true   # skip CVEs with no fix — not actionable
+          exit-code: '0'
+          format: sarif
+          output: trivy-api.sarif
+
+      - name: Upload API image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-api.sarif
+          category: trivy-image-api
+
+      # ── Worker image ──────────────────────────────────────────────────────
+      - name: Scan worker image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.acr.outputs.acr_login_server }}/ticketing-worker:latest
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+          exit-code: '0'
+          format: sarif
+          output: trivy-worker.sarif
+
+      - name: Upload worker image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-worker.sarif
+          category: trivy-image-worker
+
+      # ── Scheduler image ───────────────────────────────────────────────────
+      - name: Scan scheduler image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.acr.outputs.acr_login_server }}/ticketing-scheduler:latest
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+          exit-code: '0'
+          format: sarif
+          output: trivy-scheduler.sarif
+
+      - name: Upload scheduler image SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-scheduler.sarif
+          category: trivy-image-scheduler
