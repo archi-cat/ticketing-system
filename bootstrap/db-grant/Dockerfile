@@ -31,6 +31,7 @@ https://packages.microsoft.com/repos/azure-cli/ bookworm main" \
         > /etc/apt/sources.list.d/azure-cli.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends azure-cli && \
+    /opt/az/bin/pip install --upgrade "urllib3>=2.7.0,<3" && \
     rm -rf /var/lib/apt/lists/*
 
 # ── Scripts ───────────────────────────────────────────────────────────────────
