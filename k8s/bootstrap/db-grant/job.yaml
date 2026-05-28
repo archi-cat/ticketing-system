@@ -75,11 +75,12 @@ spec:
               value: ${DB_MIGRATOR_UAMI_NAME}
 
           volumeMounts:
-            # readOnlyRootFilesystem is true, but `az login` must write its
-            # profile somewhere. A small emptyDir gives the CLI a writable
-            # config location without making the whole rootfs writable.
-            - name: azure-config
-              mountPath: /tmp/azure
+            # readOnlyRootFilesystem is true. Mount /tmp as an emptyDir so
+            # the Azure CLI has a writable temp directory AND a writable
+            # location for its config (AZURE_CONFIG_DIR=/tmp/azure, which
+            # az creates as a subdirectory inside this volume).
+            - name: tmp
+              mountPath: /tmp
 
           # No ports, no probes — a Job runs to completion, it does not serve.
 
@@ -93,7 +94,7 @@ spec:
                 - ALL
 
       volumes:
-        - name: azure-config
+        - name: tmp
           emptyDir: {}
 
       # ── Pod-level security context ──────────────────────────────────────
