@@ -44,6 +44,6 @@ RUN chmod +x entrypoint.sh grant.sh
 # the security posture of the application images.
 RUN groupadd --system --gid 1000 dbgrant && \
     useradd  --system --uid 1000 --gid dbgrant --create-home --shell /bin/false dbgrant
-USER dbgrant
+USER 1000
 
 ENTRYPOINT ["/opt/db-grant/entrypoint.sh"]
