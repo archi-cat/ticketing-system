@@ -34,6 +34,7 @@ A simplified but realistic ticketing system:
 | Observability | Application Insights + Log Analytics + OpenTelemetry |
 | IaC | Terraform |
 | CI/CD | GitHub Actions |
+| Security scanning | Trivy (images + IaC) |
 | Automation scripts | PowerShell |
 
 ## Architecture
@@ -67,6 +68,7 @@ ticketing-system/
 - [Architecture overview](docs/architecture.md)
 - [Architectural Decision Records](docs/decisions/README.md)
 - [Operational runbooks](docs/runbooks/)
+- [Security scanning](docs/security-scanning.md)
 - [Contributing guide](CONTRIBUTING.md)
 
 ## Project phases
