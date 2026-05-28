@@ -181,6 +181,16 @@ jobs:
           docker push "${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ inputs.unit }}:${{ inputs.image_tag }}"
           docker push "${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ inputs.unit }}:latest"
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image
+        # Signs the SHA-tagged image. Both the SHA tag and :latest resolve to
+        # the same digest, so verification by either tag finds this signature.
+        run: |
+          cosign sign --yes \
+            "${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ inputs.unit }}:${{ inputs.image_tag }}"
+
       # ── Deploy to AKS ─────────────────────────────────────────────────────
 
       - name: Get AKS credentials
@@ -229,6 +239,16 @@ jobs:
           echo "::group::Rendered manifests (sensitive values redacted)"
           grep -v -i -E 'connection.?string|password' k8s-rendered/manifests.yaml
           echo "::endgroup::"
+
+      - name: Verify image signature
+        # Confirms the image was signed by this exact workflow on the main
+        # branch before anything is applied to the cluster.
+        run: |
+          cosign verify \
+            --certificate-identity \
+              "${{ github.server_url }}/${{ github.repository }}/.github/workflows/_deploy-common.yml@refs/heads/main" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${{ steps.acr.outputs.acr_login_server }}/ticketing-${{ inputs.unit }}:${{ inputs.image_tag }}"
 
       - name: Apply manifests
         run: kubectl apply -f k8s-rendered/manifests.yaml
