@@ -22,6 +22,7 @@ az login --service-principal \
   --username "$AZURE_CLIENT_ID" \
   --tenant "$AZURE_TENANT_ID" \
   --federated-token "$(cat "$AZURE_FEDERATED_TOKEN_FILE")" \
+  --allow-no-subscriptions \
   --output none
 
 # Mint an access token scoped to Azure Database for PostgreSQL.
