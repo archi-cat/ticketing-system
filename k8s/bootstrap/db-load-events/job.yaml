@@ -56,6 +56,10 @@ spec:
             - name: EVENTS_BLOB_NAME
               value: ${EVENTS_BLOB_NAME}
 
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -63,6 +67,10 @@ spec:
             capabilities:
               drop:
                 - ALL
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
 
       securityContext:
         seccompProfile:

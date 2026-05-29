@@ -49,6 +49,10 @@ spec:
             - name: POSTGRES_USER
               value: ${DB_MIGRATOR_UAMI_NAME}
 
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -56,6 +60,10 @@ spec:
             capabilities:
               drop:
                 - ALL
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
 
       securityContext:
         seccompProfile:

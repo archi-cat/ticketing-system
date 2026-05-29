@@ -66,7 +66,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH=/app/src
 
 WORKDIR /app
-USER app
+USER 1000
 
 # HTTP port the API listens on. Matches Settings.http_port default.
 EXPOSE 8000
