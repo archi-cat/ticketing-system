@@ -76,6 +76,8 @@ jobs:
             -var="gh_actions_sp_object_id=${{ secrets.GH_ACTIONS_SP_OBJECT_ID }}" \
             -var="postgres_entra_admin_object_id=${{ secrets.POSTGRES_ENTRA_ADMIN_OBJECT_ID }}" \
             -var="postgres_entra_admin_name=${{ secrets.POSTGRES_ENTRA_ADMIN_NAME }}" \
+            -var="duckdns_fqdn=${{ secrets.DUCKDNS_FQDN }}" \
+            -var="acme_email=${{ secrets.ACME_EMAIL }}" \
             -out=tfplan -no-color | tee plan_output.txt
 
       - name: Comment plan on PR
@@ -96,3 +98,21 @@ jobs:
       - name: Terraform apply
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: terraform apply -auto-approve tfplan
+
+      # ── Post-apply: DuckDNS API token in Key Vault ──────────────────────────
+      # Set inside the workflow because (a) the KV firewall only allows the
+      # deployer-detected IP (this runner) at apply time, and (b) we want the
+      # token in place by the time ESO's next reconcile fires so the cert
+      # pipeline can converge without manual intervention. Idempotent — same
+      # value re-applied each run is a no-op for ESO.
+      - name: Set DuckDNS token in Key Vault
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          KV_NAME=$(terraform output -raw keyvault_name)
+          az keyvault secret set \
+            --vault-name "$KV_NAME" \
+            --name duckdns-api-token \
+            --value "${{ secrets.DUCKDNS_API_TOKEN }}" \
+            --output none
+          echo "✓ DuckDNS token set in Key Vault $KV_NAME"

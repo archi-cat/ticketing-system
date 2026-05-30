@@ -477,3 +477,96 @@ module "external_secrets" {
 
   tags = var.tags
 }
+
+# ── Gateway TLS — cert flow (Phase 3 Tier 1 #1, PR 2) ─────────────────────────
+# DuckDNS webhook + ExternalSecret (DuckDNS token) + ClusterIssuers live in
+# the module. The Certificate (subdomain-specific) and PushSecret (KV-specific)
+# stay at env level because they're tied to this environment's FQDN and Vault.
+#
+# Certificate currently points at the staging issuer to avoid Let's Encrypt
+# rate limits while iterating. PR 3 switches to production once staging
+# issuance is verified end-to-end.
+
+module "cert_manager_duckdns" {
+  source = "../../modules/cluster-addons/cert-manager-duckdns"
+
+  cluster_secret_store_name    = module.external_secrets.cluster_secret_store_name
+  acme_email                   = var.acme_email
+  duckdns_token_kv_secret_name = var.duckdns_token_kv_secret_name
+  cert_manager_namespace       = module.cert_manager.namespace
+}
+
+# Certificate — issued by cert-manager via the DuckDNS DNS-01 webhook.
+# The resulting K8s Secret holds tls.crt + tls.key in the cert-manager
+# namespace; the PushSecret below mirrors it into Key Vault for AGC to read.
+
+resource "kubectl_manifest" "certificate" {
+  yaml_body = yamlencode({
+    apiVersion = "cert-manager.io/v1"
+    kind       = "Certificate"
+    metadata = {
+      name      = "ticketing-tls"
+      namespace = module.cert_manager.namespace
+    }
+    spec = {
+      secretName = "ticketing-tls"
+      issuerRef = {
+        name = module.cert_manager_duckdns.staging_issuer_name
+        kind = "ClusterIssuer"
+      }
+      dnsNames = [var.duckdns_fqdn]
+    }
+  })
+
+  depends_on = [module.cert_manager_duckdns]
+}
+
+# PushSecret — mirrors the issued K8s TLS Secret into Key Vault, splitting
+# tls.crt and tls.key into separate KV secrets. PR 3 will work out the exact
+# AGC consumption pattern (combined PEM bundle vs separate, vs PFX as a
+# Certificate object); the split-secret form is the most flexible starting point.
+
+resource "kubectl_manifest" "push_cert" {
+  yaml_body = yamlencode({
+    apiVersion = "external-secrets.io/v1alpha1"
+    kind       = "PushSecret"
+    metadata = {
+      name      = "ticketing-tls-push"
+      namespace = module.cert_manager.namespace
+    }
+    spec = {
+      refreshInterval = "1h"
+      secretStoreRefs = [
+        {
+          kind = "ClusterSecretStore"
+          name = module.external_secrets.cluster_secret_store_name
+        },
+      ]
+      selector = {
+        secret = {
+          name = "ticketing-tls"
+        }
+      }
+      data = [
+        {
+          match = {
+            secretKey = "tls.crt"
+            remoteRef = {
+              remoteKey = "ticketing-tls-crt"
+            }
+          }
+        },
+        {
+          match = {
+            secretKey = "tls.key"
+            remoteRef = {
+              remoteKey = "ticketing-tls-key"
+            }
+          }
+        },
+      ]
+    }
+  })
+
+  depends_on = [kubectl_manifest.certificate]
+}

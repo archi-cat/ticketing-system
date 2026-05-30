@@ -59,6 +59,31 @@ Create the Service Principal `sp-hello-world-github` with federated
 credentials for this repo's main branch and PR workflows. See ADR-0001
 for context.
 
+### 0.4 DuckDNS prerequisites (Phase 3 Tier 1 #1 — Gateway TLS)
+
+The Gateway terminates TLS using a Let's Encrypt cert issued via the
+DuckDNS DNS-01 challenge. The DuckDNS account is set up once and
+persists across teardown/redeploy cycles — Terraform never sees the
+DuckDNS API token.
+
+1. Sign up at [duckdns.org](https://www.duckdns.org/) (Google login).
+2. Reserve a subdomain. Note the **full FQDN** (e.g.
+   `ticketing-floryda.duckdns.org`).
+3. Copy your DuckDNS token from the dashboard. The token is per-account,
+   not per-subdomain.
+4. Add three GitHub Actions repository secrets:
+
+   | Secret | Value | Notes |
+   |---|---|---|
+   | `DUCKDNS_FQDN` | full FQDN from step 2 | e.g. `ticketing-floryda.duckdns.org` |
+   | `ACME_EMAIL` | your email | Let's Encrypt sends expiry-warning notices here |
+   | `DUCKDNS_API_TOKEN` | token from step 3 | Set in Key Vault by the infra-uksouth workflow — not passed to Terraform |
+
+`DUCKDNS_FQDN` and `ACME_EMAIL` are Terraform variables. `DUCKDNS_API_TOKEN`
+is set directly in Key Vault by the infra-uksouth workflow's post-apply step
+(see Step 1.2). The token never appears in Terraform state or plan output;
+ESO retrieves it from Key Vault at runtime via Workload Identity.
+
 ## Phase 1 — Infrastructure deployment
 
 ### 1.1 Deploy the shared ACR
