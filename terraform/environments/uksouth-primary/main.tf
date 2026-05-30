@@ -16,6 +16,18 @@ terraform {
       source  = "hashicorp/http"
       version = "~> 3.4"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 3.0"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.30"
+    }
+    kubectl = {
+      source  = "alekc/kubectl"
+      version = "~> 2.0"
+    }
   }
   required_version = ">= 1.9.0"
 }
@@ -30,6 +42,38 @@ provider "azurerm" {
 provider "azapi" {
   # Inherits auth from the same Azure CLI / OIDC context as azurerm.
   # No explicit config needed.
+}
+
+# ── Kubernetes-adjacent providers ─────────────────────────────────────────────
+# helm + kubernetes + kubectl all authenticate against the AKS API server
+# using the client cert/key from kube_config (the cluster currently has local
+# accounts enabled). Once the cluster goes private in Phase 3 Tier 3, these
+# blocks will need an exec-plugin / kubelogin path AND a way for the Terraform
+# runner to reach the private API server (az aks command invoke or self-hosted
+# runner in the VNet).
+
+provider "helm" {
+  kubernetes = {
+    host                   = module.aks.host
+    cluster_ca_certificate = base64decode(module.aks.cluster_ca_certificate)
+    client_certificate     = base64decode(module.aks.client_certificate)
+    client_key             = base64decode(module.aks.client_key)
+  }
+}
+
+provider "kubernetes" {
+  host                   = module.aks.host
+  cluster_ca_certificate = base64decode(module.aks.cluster_ca_certificate)
+  client_certificate     = base64decode(module.aks.client_certificate)
+  client_key             = base64decode(module.aks.client_key)
+}
+
+provider "kubectl" {
+  host                   = module.aks.host
+  cluster_ca_certificate = base64decode(module.aks.cluster_ca_certificate)
+  client_certificate     = base64decode(module.aks.client_certificate)
+  client_key             = base64decode(module.aks.client_key)
+  load_config_file       = false
 }
 
 data "azurerm_client_config" "current" {}
@@ -408,4 +452,28 @@ resource "azurerm_role_assignment" "worker_sb_receiver" {
   scope                = module.servicebus.namespace_id
   role_definition_name = "Azure Service Bus Data Receiver"
   principal_id         = module.identity.identity_principal_ids.worker
+}
+
+# ── Cluster add-ons ───────────────────────────────────────────────────────────
+# cert-manager and External Secrets Operator. Both installed via Terraform's
+# Helm provider rather than kubectl-apply in a workflow — keeps add-on
+# lifecycle, version pinning, and drift detection in the same state as the
+# rest of the infrastructure.
+
+module "cert_manager" {
+  source = "../../modules/cluster-addons/cert-manager"
+}
+
+module "external_secrets" {
+  source = "../../modules/cluster-addons/external-secrets"
+
+  location            = var.location
+  resource_group_name = azurerm_resource_group.main.name
+  name_prefix         = "uami-ticketing-uksouth"
+  oidc_issuer_url     = module.aks.oidc_issuer_url
+
+  key_vault_id  = module.keyvault.vault_id
+  key_vault_uri = module.keyvault.vault_uri
+
+  tags = var.tags
 }
