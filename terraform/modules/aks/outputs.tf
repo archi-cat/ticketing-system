@@ -43,3 +43,32 @@ output "kube_config_raw" {
   value       = azurerm_kubernetes_cluster.main.kube_config_raw
   sensitive   = true
 }
+
+# ── Pieces of kube_config the Terraform Helm/Kubernetes/kubectl providers
+# consume directly. Exposed as discrete outputs (rather than the providers
+# parsing kube_config_raw) so provider config in the environment stays simple
+# and the sensitive scope is explicit per attribute.
+
+output "host" {
+  description = "AKS API server endpoint URL"
+  value       = azurerm_kubernetes_cluster.main.kube_config[0].host
+  sensitive   = true
+}
+
+output "cluster_ca_certificate" {
+  description = "Base64-encoded cluster CA certificate"
+  value       = azurerm_kubernetes_cluster.main.kube_config[0].cluster_ca_certificate
+  sensitive   = true
+}
+
+output "client_certificate" {
+  description = "Base64-encoded client certificate"
+  value       = azurerm_kubernetes_cluster.main.kube_config[0].client_certificate
+  sensitive   = true
+}
+
+output "client_key" {
+  description = "Base64-encoded client key"
+  value       = azurerm_kubernetes_cluster.main.kube_config[0].client_key
+  sensitive   = true
+}
