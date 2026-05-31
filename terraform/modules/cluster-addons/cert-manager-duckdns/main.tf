@@ -18,29 +18,46 @@ terraform {
 # natively — webhooks are the official extension mechanism for unsupported
 # DNS providers.
 #
-# Chart source: https://github.com/ebrianne/cert-manager-webhook-duckdns
+# We use the cobexer fork, which is the actively maintained successor to the
+# original ebrianne/cert-manager-webhook-duckdns (last released 2021). The
+# fork distributes its chart via OCI on GHCR rather than a github.io chart
+# repo, and supports cert-manager v1.20.x.
+#
+# Chart source: https://github.com/cobexer/cert-manager-webhook-duckdns
 
 resource "helm_release" "duckdns_webhook" {
   name       = "cert-manager-webhook-duckdns"
-  repository = "https://ebrianne.github.io/helm-charts"
+  repository = "oci://ghcr.io/cobexer/charts"
   chart      = "cert-manager-webhook-duckdns"
   version    = var.webhook_chart_version
   namespace  = var.cert_manager_namespace
 
-  # The chart's defaults set groupName to acme.duckdns.org and pin the webhook
-  # to talk to cert-manager in the cert-manager namespace.
   set = [
     {
-      # The ClusterIssuer below references this groupName + solverName pair to
-      # route ACME challenges to this webhook.
+      # The ClusterIssuer below references this groupName + solverName pair
+      # ('duckdns') to route ACME challenges to this webhook.
       name  = "groupName"
       value = var.webhook_group_name
     },
     {
-      name  = "certManager.namespace"
-      value = var.cert_manager_namespace
+      # Read the DuckDNS API token from the existing K8s Secret that ESO
+      # populates from Key Vault. This is what keeps the token out of
+      # Terraform state and out of plan output.
+      name  = "duckdns.secret.existingSecret"
+      value = "true"
+    },
+    {
+      name  = "duckdns.secret.existingSecretName"
+      value = local.token_secret_name
     },
   ]
+}
+
+# Single source of truth for the K8s Secret name. Used by the ExternalSecret
+# (target name), the webhook chart values (existingSecretName), and the
+# ClusterIssuer manifests (apiTokenSecretRef.name).
+locals {
+  token_secret_name = "duckdns-api-token"
 }
 
 # ── DuckDNS API token sync ────────────────────────────────────────────────────
@@ -64,7 +81,7 @@ resource "kubectl_manifest" "duckdns_token" {
         name = var.cluster_secret_store_name
       }
       target = {
-        name           = "duckdns-api-token"
+        name           = local.token_secret_name
         creationPolicy = "Owner"
       }
       data = [
@@ -121,8 +138,12 @@ resource "kubectl_manifest" "cluster_issuer" {
                 groupName  = var.webhook_group_name
                 solverName = "duckdns"
                 config = {
-                  secretName = "duckdns-api-token"
-                  secretKey  = "token"
+                  # cobexer webhook expects apiTokenSecretRef with
+                  # { name, key } pointing at the K8s Secret ESO populated.
+                  apiTokenSecretRef = {
+                    name = local.token_secret_name
+                    key  = "token"
+                  }
                 }
               }
             }
