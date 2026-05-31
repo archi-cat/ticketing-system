@@ -84,6 +84,11 @@ output "keyvault_uri" {
   value       = module.keyvault.vault_uri
 }
 
+output "keyvault_name" {
+  description = "Key Vault name — used by ops steps that set secrets via `az keyvault secret set`"
+  value       = module.keyvault.vault_name
+}
+
 output "storage_blob_endpoint" {
   description = "Primary blob service endpoint URL — used by the db-load-events Job"
   value       = module.storage.blob_endpoint
