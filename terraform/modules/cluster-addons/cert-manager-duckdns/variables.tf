@@ -32,7 +32,7 @@ variable "webhook_group_name" {
 }
 
 variable "webhook_chart_version" {
-  description = "cert-manager-webhook-duckdns Helm chart version. Releases: https://github.com/ebrianne/cert-manager-webhook-duckdns/releases"
+  description = "cert-manager-webhook-duckdns Helm chart version. Distributed via OCI at oci://ghcr.io/cobexer/charts. Releases: https://github.com/cobexer/cert-manager-webhook-duckdns/releases"
   type        = string
-  default     = "1.5.0"
+  default     = "2.0.0"
 }

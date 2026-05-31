@@ -8,6 +8,10 @@ cert-manager doesn't speak DuckDNS natively. The standard cert-manager built-in 
 
 DNS-01 (over HTTP-01) is chosen because it doesn't couple cert renewal to HTTP listener health on the Gateway, and because it works without an HTTP route being configured beforehand.
 
+## Which webhook fork
+
+We use the [cobexer/cert-manager-webhook-duckdns](https://github.com/cobexer/cert-manager-webhook-duckdns) fork. The original ebrianne project hasn't shipped a release since 2021 and its `github.io` chart repository is offline. The cobexer fork is actively maintained, distributes its chart via OCI on GHCR (`oci://ghcr.io/cobexer/charts/cert-manager-webhook-duckdns`), and targets recent cert-manager / Kubernetes versions.
+
 ## Components
 
 ```
@@ -65,7 +69,7 @@ module "cert_manager_duckdns" {
   # cert_manager_namespace       = "cert-manager"
   # duckdns_token_kv_secret_name = "duckdns-api-token"
   # webhook_group_name           = "acme.duckdns.org"
-  # webhook_chart_version        = "1.5.0"
+  # webhook_chart_version        = "2.0.0"
 }
 ```
 
@@ -80,7 +84,7 @@ The `helm` and `kubectl` providers must be configured at the environment level.
 | `cert_manager_namespace` | string | No | `cert-manager` | Namespace where cert-manager is installed |
 | `duckdns_token_kv_secret_name` | string | No | `duckdns-api-token` | Name of the Key Vault secret holding the DuckDNS API token |
 | `webhook_group_name` | string | No | `acme.duckdns.org` | ACME webhook groupName — used by ClusterIssuers to route challenges to this webhook |
-| `webhook_chart_version` | string | No | `1.5.0` | cert-manager-webhook-duckdns Helm chart version |
+| `webhook_chart_version` | string | No | `2.0.0` | cert-manager-webhook-duckdns Helm chart version (cobexer fork, OCI) |
 
 ## Outputs
 
