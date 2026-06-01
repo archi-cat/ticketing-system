@@ -37,6 +37,13 @@ resource "helm_release" "this" {
   version    = var.chart_version
   namespace  = kubernetes_namespace.this.metadata[0].name
 
+  # Idempotency safeguards for the teardown/rebuild loop:
+  # - atomic: clean up the partial install on failure (also implies wait)
+  # - replace: allow re-using the release name if a previous attempt left
+  #   the release record behind in a failed state
+  atomic  = true
+  replace = true
+
   # cert-manager CRDs ship with the chart — bundled here keeps the upgrade
   # path as a single helm_release version bump. Leader-election pinned to the
   # install namespace so cert-manager doesn't try to claim a lease in kube-system.
