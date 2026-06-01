@@ -76,8 +76,6 @@ jobs:
             -var="gh_actions_sp_object_id=${{ secrets.GH_ACTIONS_SP_OBJECT_ID }}" \
             -var="postgres_entra_admin_object_id=${{ secrets.POSTGRES_ENTRA_ADMIN_OBJECT_ID }}" \
             -var="postgres_entra_admin_name=${{ secrets.POSTGRES_ENTRA_ADMIN_NAME }}" \
-            -var="duckdns_fqdn=${{ secrets.DUCKDNS_FQDN }}" \
-            -var="acme_email=${{ secrets.ACME_EMAIL }}" \
             -out=tfplan -no-color | tee plan_output.txt
 
       - name: Comment plan on PR
@@ -116,3 +114,41 @@ jobs:
             --value "${{ secrets.DUCKDNS_API_TOKEN }}" \
             --output none
           echo "✓ DuckDNS token set in Key Vault $KV_NAME"
+
+      # ── Post-apply: cert-pipeline CRD manifests ─────────────────────────────
+      # ClusterSecretStore, ExternalSecret (DuckDNS token sync), ClusterIssuers
+      # (staging + production), Certificate, PushSecret. Applied here rather
+      # than via Terraform because the alekc/kubectl provider can't defer
+      # configuration when module.aks.host is "(known after apply)" — see
+      # k8s/cluster-addons/cert-pipeline/README.md.
+      - name: Get AKS credentials
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          AKS_NAME=$(terraform output -raw aks_cluster_name)
+          RG=$(terraform output -raw resource_group_name)
+          az aks get-credentials --resource-group "$RG" --name "$AKS_NAME" --overwrite-existing
+
+      - name: Install kubelogin
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          curl -L -o kubelogin.zip https://github.com/Azure/kubelogin/releases/download/v0.1.5/kubelogin-linux-amd64.zip
+          unzip kubelogin.zip
+          sudo mv bin/linux_amd64/kubelogin /usr/local/bin/
+
+      - name: Convert kubeconfig to Azure CLI auth
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: kubelogin convert-kubeconfig -l azurecli
+
+      - name: Apply cert-pipeline manifests
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          ACME_EMAIL:    ${{ secrets.ACME_EMAIL }}
+          DUCKDNS_FQDN:  ${{ secrets.DUCKDNS_FQDN }}
+        run: |
+          set -euo pipefail
+          KEYVAULT_URI=$(terraform output -raw keyvault_uri)
+          export KEYVAULT_URI
+          for f in ../../../k8s/cluster-addons/cert-pipeline/*.yaml; do
+            echo "==> $(basename "$f")"
+            envsubst < "$f" | kubectl apply -f -
+          done

@@ -79,10 +79,13 @@ DuckDNS API token.
    | `ACME_EMAIL` | your email | Let's Encrypt sends expiry-warning notices here |
    | `DUCKDNS_API_TOKEN` | token from step 3 | Set in Key Vault by the infra-uksouth workflow — not passed to Terraform |
 
-`DUCKDNS_FQDN` and `ACME_EMAIL` are Terraform variables. `DUCKDNS_API_TOKEN`
-is set directly in Key Vault by the infra-uksouth workflow's post-apply step
-(see Step 1.2). The token never appears in Terraform state or plan output;
-ESO retrieves it from Key Vault at runtime via Workload Identity.
+None of the three values are Terraform variables. `DUCKDNS_FQDN` and
+`ACME_EMAIL` are substituted into the YAML manifests in
+`k8s/cluster-addons/cert-pipeline/` via `envsubst` during the infra-uksouth
+workflow's post-apply step. `DUCKDNS_API_TOKEN` is set directly in Key Vault
+by the same post-apply step. None of them appear in Terraform state or plan
+output; ESO retrieves the API token from Key Vault at runtime via Workload
+Identity.
 
 ## Phase 1 — Infrastructure deployment
 

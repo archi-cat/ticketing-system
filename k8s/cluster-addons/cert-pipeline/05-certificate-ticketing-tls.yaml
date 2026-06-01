@@ -1,0 +1,15 @@
+# TLS certificate for the Gateway. Issued through DNS-01 via the DuckDNS
+# webhook. Currently points at the staging issuer; PR 3 switches to
+# letsencrypt-production once staging issuance is verified.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ticketing-tls
+  namespace: cert-manager
+spec:
+  secretName: ticketing-tls
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+  dnsNames:
+    - ${DUCKDNS_FQDN}

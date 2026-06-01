@@ -35,15 +35,16 @@ The federated credential's subject claim binds it specifically to `system:servic
 | `azurerm_federated_identity_credential.this` | Trusts the AKS OIDC issuer for the ESO ServiceAccount |
 | `azurerm_role_assignment.key_vault` | `Key Vault Secrets Officer` on the supplied Key Vault |
 | `helm_release.external-secrets` | Controller + cert-controller + webhook + CRDs |
-| `kubectl_manifest.cluster_secret_store` | `ClusterSecretStore/keyvault` pointed at the KV |
 
 ## Why Secrets Officer (not Secrets User)
 
 `Secrets User` (read-only) would suffice for the `ExternalSecret` direction (Key Vault → cluster). But the cert flow in PR 2 uses `PushSecret` (cluster → Key Vault), which requires write. One role for both directions keeps the IAM surface simple.
 
-## Why `kubectl_manifest` for the ClusterSecretStore
+## Where the ClusterSecretStore lives
 
-The `kubernetes_manifest` resource validates against CRDs at plan time. On a fresh apply where ESO's CRDs are installed by the `helm_release` in the same run, plan-time validation fails because the CRDs don't exist yet. `kubectl_manifest` (alekc/kubectl) applies imperatively at apply time and sidesteps this.
+The `ClusterSecretStore` that pairs this controller with the regional Key Vault is **not** in this module — it's a YAML manifest at [`k8s/cluster-addons/cert-pipeline/01-cluster-secret-store.yaml`](../../../../k8s/cluster-addons/cert-pipeline/01-cluster-secret-store.yaml), applied by the `infra-uksouth` workflow after Terraform completes.
+
+The reason: the only practical Terraform path for applying CRD-typed manifests is the `alekc/kubectl` provider, which can't defer its configuration when `module.aks.host` is "(known after apply)" on a first-pass deploy. Splitting Helm-installed controllers (Terraform) from CRD-typed resources (YAML applied post-apply) keeps the Terraform graph clean.
 
 ## Usage
 
@@ -56,8 +57,7 @@ module "external_secrets" {
   name_prefix         = "uami-ticketing-uksouth"
   oidc_issuer_url     = module.aks.oidc_issuer_url
 
-  key_vault_id  = module.keyvault.vault_id
-  key_vault_uri = module.keyvault.vault_uri
+  key_vault_id = module.keyvault.vault_id
 
   tags = var.tags
 }
@@ -73,8 +73,7 @@ The `helm`, `kubernetes`, and `kubectl` providers must be configured at the envi
 | `resource_group_name` | string | Yes | — | Resource group for the UAMI |
 | `name_prefix` | string | Yes | — | Prefix for the UAMI name |
 | `oidc_issuer_url` | string | Yes | — | AKS cluster OIDC issuer URL |
-| `key_vault_id` | string | Yes | — | Resource ID of the Key Vault to bind ESO to |
-| `key_vault_uri` | string | Yes | — | Vault URI for the ClusterSecretStore (`https://<name>.vault.azure.net`) |
+| `key_vault_id` | string | Yes | — | Resource ID of the Key Vault to bind ESO to (target of the `Secrets Officer` role assignment) |
 | `chart_version` | string | No | `0.10.5` | external-secrets Helm chart version |
 | `tags` | map(string) | No | `{}` | Tags applied to the UAMI |
 
@@ -83,7 +82,6 @@ The `helm`, `kubernetes`, and `kubectl` providers must be configured at the envi
 | Output | Description |
 |---|---|
 | `namespace` | The namespace ESO is installed in (`external-secrets`) |
-| `cluster_secret_store_name` | Name of the ClusterSecretStore (`keyvault`) — referenced by ExternalSecret / PushSecret resources |
 | `uami_client_id` | ESO UAMI client ID |
 | `uami_principal_id` | ESO UAMI principal (object) ID — for any additional role assignments outside this module |
 

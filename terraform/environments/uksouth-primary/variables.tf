@@ -59,32 +59,10 @@ variable "postgres_entra_admin_principal_type" {
 }
 
 # ── Gateway TLS (Phase 3 Tier 1 #1) ───────────────────────────────────────────
-
-variable "duckdns_fqdn" {
-  description = "Full DuckDNS FQDN for the Gateway, e.g. ticketing-floryda.duckdns.org. The subdomain must already be reserved on duckdns.org."
-  type        = string
-
-  validation {
-    condition     = can(regex("^[a-z0-9-]+\\.duckdns\\.org$", var.duckdns_fqdn))
-    error_message = "duckdns_fqdn must look like '<subdomain>.duckdns.org' (lowercase alphanumeric + hyphens in the subdomain)."
-  }
-}
-
-variable "acme_email" {
-  description = "Email registered with Let's Encrypt — receives expiry-warning notifications"
-  type        = string
-
-  validation {
-    condition     = can(regex("^[^@]+@[^@]+\\.[^@]+$", var.acme_email))
-    error_message = "acme_email must look like an email address."
-  }
-}
-
-variable "duckdns_token_kv_secret_name" {
-  description = "Name of the Key Vault secret holding the DuckDNS API token. Set the value manually with `az keyvault secret set` after the vault exists."
-  type        = string
-  default     = "duckdns-api-token"
-}
+# The DuckDNS FQDN, ACME email, and DuckDNS API token are no longer Terraform
+# variables. They're applied to the cluster directly by the infra-uksouth
+# workflow as repo secrets — DUCKDNS_FQDN and ACME_EMAIL via envsubst into
+# the cert-pipeline manifests, DUCKDNS_API_TOKEN via az keyvault secret set.
 
 # ── Tags ──────────────────────────────────────────────────────────────────────
 

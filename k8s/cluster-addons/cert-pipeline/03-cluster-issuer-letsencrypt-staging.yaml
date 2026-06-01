@@ -1,0 +1,25 @@
+# Let's Encrypt staging ClusterIssuer. Use this issuer for any Certificate
+# while iterating — staging has no rate limits but its CA is not trusted by
+# browsers. Switch a Certificate's issuerRef to letsencrypt-production once
+# the flow is verified end-to-end.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: ${ACME_EMAIL}
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - dns01:
+          webhook:
+            # Must match the webhook chart's `groupName` value
+            # (cobexer chart default: acme.duckdns.org)
+            groupName: acme.duckdns.org
+            solverName: duckdns
+            config:
+              apiTokenSecretRef:
+                name: duckdns-api-token
+                key: token
