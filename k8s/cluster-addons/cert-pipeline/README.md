@@ -10,6 +10,7 @@ Files are numbered to make the apply order explicit (it's also the alphabetical 
 
 | File | Resource | What it does |
 |---|---|---|
+| `00-webhook-secret-rbac.yaml` | `Role` + `RoleBinding/duckdns-webhook-token-reader` | Grants the DuckDNS webhook's ServiceAccount permission to read the synced `duckdns-api-token` Secret. The chart only auto-creates RBAC for its inline-token path |
 | `01-cluster-secret-store.yaml` | `ClusterSecretStore/keyvault` | Cluster-wide handle for ESO to read/write the regional Key Vault via Workload Identity |
 | `02-external-secret-duckdns-token.yaml` | `ExternalSecret/duckdns-api-token` | Syncs the DuckDNS API token from KV into the cert-manager namespace |
 | `03-cluster-issuer-letsencrypt-staging.yaml` | `ClusterIssuer/letsencrypt-staging` | Let's Encrypt staging issuer using DNS-01 via the DuckDNS webhook |
