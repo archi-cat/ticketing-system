@@ -24,10 +24,6 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.30"
     }
-    kubectl = {
-      source  = "alekc/kubectl"
-      version = "~> 2.0"
-    }
   }
   required_version = ">= 1.9.0"
 }
@@ -45,12 +41,19 @@ provider "azapi" {
 }
 
 # ── Kubernetes-adjacent providers ─────────────────────────────────────────────
-# helm + kubernetes + kubectl all authenticate against the AKS API server
-# using the client cert/key from kube_config (the cluster currently has local
-# accounts enabled). Once the cluster goes private in Phase 3 Tier 3, these
-# blocks will need an exec-plugin / kubelogin path AND a way for the Terraform
-# runner to reach the private API server (az aks command invoke or self-hosted
-# runner in the VNet).
+# helm + kubernetes both authenticate against the AKS API server using the
+# client cert/key from kube_config (the cluster currently has local accounts
+# enabled). CRD-typed manifests (ClusterSecretStore, ClusterIssuer,
+# Certificate, ExternalSecret, PushSecret) are NOT applied via Terraform —
+# they live in k8s/cluster-addons/cert-pipeline/ and are applied by the
+# infra-uksouth workflow's post-apply step with `envsubst | kubectl apply`.
+# That split keeps Terraform's resource graph clean of CRDs whose provider
+# can't defer config until apply time.
+#
+# Once the cluster goes private in Phase 3 Tier 3, these blocks will need an
+# exec-plugin / kubelogin path AND a way for the Terraform runner to reach
+# the private API server (az aks command invoke or self-hosted runner in the
+# VNet).
 
 provider "helm" {
   kubernetes = {
@@ -66,14 +69,6 @@ provider "kubernetes" {
   cluster_ca_certificate = base64decode(module.aks.cluster_ca_certificate)
   client_certificate     = base64decode(module.aks.client_certificate)
   client_key             = base64decode(module.aks.client_key)
-}
-
-provider "kubectl" {
-  host                   = module.aks.host
-  cluster_ca_certificate = base64decode(module.aks.cluster_ca_certificate)
-  client_certificate     = base64decode(module.aks.client_certificate)
-  client_key             = base64decode(module.aks.client_key)
-  load_config_file       = false
 }
 
 data "azurerm_client_config" "current" {}
@@ -472,101 +467,20 @@ module "external_secrets" {
   name_prefix         = "uami-ticketing-uksouth"
   oidc_issuer_url     = module.aks.oidc_issuer_url
 
-  key_vault_id  = module.keyvault.vault_id
-  key_vault_uri = module.keyvault.vault_uri
+  key_vault_id = module.keyvault.vault_id
 
   tags = var.tags
 }
 
-# ── Gateway TLS — cert flow (Phase 3 Tier 1 #1, PR 2) ─────────────────────────
-# DuckDNS webhook + ExternalSecret (DuckDNS token) + ClusterIssuers live in
-# the module. The Certificate (subdomain-specific) and PushSecret (KV-specific)
-# stay at env level because they're tied to this environment's FQDN and Vault.
-#
-# Certificate currently points at the staging issuer to avoid Let's Encrypt
-# rate limits while iterating. PR 3 switches to production once staging
-# issuance is verified end-to-end.
+# ── Gateway TLS — cert flow (Phase 3 Tier 1 #1) ───────────────────────────────
+# This module installs the DuckDNS cert-manager webhook (Helm release only).
+# The CRD-typed resources for the cert pipeline — ClusterSecretStore,
+# ExternalSecret (DuckDNS token sync), ClusterIssuers (staging + production),
+# Certificate, and PushSecret — live in k8s/cluster-addons/cert-pipeline/
+# and are applied by the infra-uksouth workflow's post-apply step.
 
 module "cert_manager_duckdns" {
   source = "../../modules/cluster-addons/cert-manager-duckdns"
 
-  cluster_secret_store_name    = module.external_secrets.cluster_secret_store_name
-  acme_email                   = var.acme_email
-  duckdns_token_kv_secret_name = var.duckdns_token_kv_secret_name
-  cert_manager_namespace       = module.cert_manager.namespace
-}
-
-# Certificate — issued by cert-manager via the DuckDNS DNS-01 webhook.
-# The resulting K8s Secret holds tls.crt + tls.key in the cert-manager
-# namespace; the PushSecret below mirrors it into Key Vault for AGC to read.
-
-resource "kubectl_manifest" "certificate" {
-  yaml_body = yamlencode({
-    apiVersion = "cert-manager.io/v1"
-    kind       = "Certificate"
-    metadata = {
-      name      = "ticketing-tls"
-      namespace = module.cert_manager.namespace
-    }
-    spec = {
-      secretName = "ticketing-tls"
-      issuerRef = {
-        name = module.cert_manager_duckdns.staging_issuer_name
-        kind = "ClusterIssuer"
-      }
-      dnsNames = [var.duckdns_fqdn]
-    }
-  })
-
-  depends_on = [module.cert_manager_duckdns]
-}
-
-# PushSecret — mirrors the issued K8s TLS Secret into Key Vault, splitting
-# tls.crt and tls.key into separate KV secrets. PR 3 will work out the exact
-# AGC consumption pattern (combined PEM bundle vs separate, vs PFX as a
-# Certificate object); the split-secret form is the most flexible starting point.
-
-resource "kubectl_manifest" "push_cert" {
-  yaml_body = yamlencode({
-    apiVersion = "external-secrets.io/v1alpha1"
-    kind       = "PushSecret"
-    metadata = {
-      name      = "ticketing-tls-push"
-      namespace = module.cert_manager.namespace
-    }
-    spec = {
-      refreshInterval = "1h"
-      secretStoreRefs = [
-        {
-          kind = "ClusterSecretStore"
-          name = module.external_secrets.cluster_secret_store_name
-        },
-      ]
-      selector = {
-        secret = {
-          name = "ticketing-tls"
-        }
-      }
-      data = [
-        {
-          match = {
-            secretKey = "tls.crt"
-            remoteRef = {
-              remoteKey = "ticketing-tls-crt"
-            }
-          }
-        },
-        {
-          match = {
-            secretKey = "tls.key"
-            remoteRef = {
-              remoteKey = "ticketing-tls-key"
-            }
-          }
-        },
-      ]
-    }
-  })
-
-  depends_on = [kubectl_manifest.certificate]
+  cert_manager_namespace = module.cert_manager.namespace
 }

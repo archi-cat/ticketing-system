@@ -12,10 +12,6 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.30"
     }
-    kubectl = {
-      source  = "alekc/kubectl"
-      version = "~> 2.0"
-    }
   }
   required_version = ">= 1.9.0"
 }
@@ -102,33 +98,10 @@ resource "helm_release" "this" {
   ]
 }
 
-# ── ClusterSecretStore ────────────────────────────────────────────────────────
-# Points at the Key Vault using the controller's Workload Identity. Once this
-# reports Ready, any ExternalSecret or PushSecret in any namespace can
-# reference it. Applied as a kubectl_manifest because the kubernetes_manifest
-# resource validates against CRDs at plan time, which would fail on a fresh
-# apply where the ESO CRDs are installed by the helm_release above.
-
-resource "kubectl_manifest" "cluster_secret_store" {
-  yaml_body = yamlencode({
-    apiVersion = "external-secrets.io/v1beta1"
-    kind       = "ClusterSecretStore"
-    metadata = {
-      name = "keyvault"
-    }
-    spec = {
-      provider = {
-        azurekv = {
-          authType = "WorkloadIdentity"
-          vaultUrl = var.key_vault_uri
-          serviceAccountRef = {
-            name      = "external-secrets"
-            namespace = kubernetes_namespace.this.metadata[0].name
-          }
-        }
-      }
-    }
-  })
-
-  depends_on = [helm_release.this]
-}
+# ── ClusterSecretStore lives in k8s/cluster-addons/cert-pipeline/ ─────────────
+# The ClusterSecretStore that points this controller at the regional Key Vault
+# is applied as a YAML manifest by the infra-uksouth workflow's post-apply
+# step. The split — Terraform owns the Helm release + Workload Identity wiring,
+# YAML owns the CRD-typed resources — sidesteps the alekc/kubectl provider's
+# inability to defer configuration when module.aks.host is "(known after apply)"
+# on a first-pass deploy.

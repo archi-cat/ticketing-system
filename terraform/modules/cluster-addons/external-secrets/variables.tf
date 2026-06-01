@@ -23,11 +23,6 @@ variable "key_vault_id" {
   type        = string
 }
 
-variable "key_vault_uri" {
-  description = "Vault URI (e.g. https://kv-name.vault.azure.net) referenced by the ClusterSecretStore"
-  type        = string
-}
-
 variable "chart_version" {
   description = "external-secrets Helm chart version. Releases: https://github.com/external-secrets/external-secrets/releases"
   type        = string

@@ -1,9 +1,5 @@
-output "staging_issuer_name" {
-  description = "Name of the staging ClusterIssuer — reference this from a Certificate resource while iterating to avoid Let's Encrypt rate limits"
-  value       = "letsencrypt-staging"
-}
-
-output "production_issuer_name" {
-  description = "Name of the production ClusterIssuer — switch a Certificate to this once staging issuance is verified"
-  value       = "letsencrypt-production"
-}
+# ClusterIssuers and the cert pipeline manifests they're referenced from live
+# in k8s/cluster-addons/cert-pipeline/, not in this module. No Terraform
+# outputs are needed — the issuer names (`letsencrypt-staging`,
+# `letsencrypt-production`) are written directly in the YAML manifests that
+# consume them.
