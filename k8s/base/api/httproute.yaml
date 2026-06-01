@@ -5,13 +5,26 @@ metadata:
   namespace: ticketing
 spec:
   parentRefs:
+    # Attach only to the HTTPS listener — the HTTP listener is reserved for
+    # the 301 redirect (see httproute-redirect in the gateway base).
     - name: ticketing
-  hostnames: []                    # no host restriction in Phase 1
+      sectionName: https
+  hostnames: []                    # cert SAN already enforces the hostname
   rules:
     - matches:
         - path:
             type: PathPrefix
             value: /
+      filters:
+        # HSTS — tells browsers to never make a plaintext request to this
+        # domain (or subdomains) for the next year. Future visits skip the
+        # 301 redirect entirely. Applied here rather than at the app layer
+        # so all routes through this Gateway pick it up uniformly.
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Strict-Transport-Security
+                value: max-age=31536000; includeSubDomains
       backendRefs:
         - name: api
           port: 80

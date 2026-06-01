@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - gateway.yaml
+  - httproute-redirect.yaml
 
 labels:
   - includeSelectors: false

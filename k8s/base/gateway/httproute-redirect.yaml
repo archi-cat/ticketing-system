@@ -1,0 +1,21 @@
+# Catch-all HTTP→HTTPS 301 redirect. Attaches only to the port-80 listener
+# (sectionName: http) so it doesn't double-fire on the 443 side.
+#
+# Because the cert is provisioned via DNS-01 (no /.well-known/acme-challenge
+# carve-out needed), this can safely redirect everything on port 80 with no
+# exceptions.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: http-to-https-redirect
+  namespace: ticketing
+spec:
+  parentRefs:
+    - name: ticketing
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
