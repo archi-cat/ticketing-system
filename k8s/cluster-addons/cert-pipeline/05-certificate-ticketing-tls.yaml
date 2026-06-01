@@ -1,6 +1,8 @@
 # TLS certificate for the Gateway. Issued through DNS-01 via the DuckDNS
-# webhook. Currently points at the staging issuer; PR 3 switches to
-# letsencrypt-production once staging issuance is verified.
+# webhook. Production Let's Encrypt issuer — browser-trusted cert subject
+# to LE's per-domain rate limits (50 certs/registered-domain/week). DuckDNS
+# is on the Public Suffix List, so each `<sub>.duckdns.org` counts as its
+# own registered domain — the project gets its own 50/week budget.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -9,7 +11,7 @@ metadata:
 spec:
   secretName: ticketing-tls
   issuerRef:
-    name: letsencrypt-staging
+    name: letsencrypt-production
     kind: ClusterIssuer
   dnsNames:
     - ${DUCKDNS_FQDN}

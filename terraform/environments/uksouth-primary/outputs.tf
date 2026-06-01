@@ -34,6 +34,11 @@ output "agc_frontend_id" {
   value       = module.agc.frontend_id
 }
 
+output "agc_frontend_fqdn" {
+  description = "AGC frontend FQDN — resolved to its public IP for the DuckDNS A-record update step."
+  value       = module.agc.frontend_fqdn
+}
+
 
 # ── Identity ──────────────────────────────────────────────────────────────────
 

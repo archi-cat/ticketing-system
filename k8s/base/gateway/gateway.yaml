@@ -7,9 +7,30 @@ metadata:
 spec:
   gatewayClassName: azure-alb-external
   listeners:
+    # Port 80 stays bound only to do an HTTP→HTTPS redirect — see the
+    # httproute-redirect resource. No application traffic ever terminates
+    # here.
     - name: http
       port: 80
       protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+    # Port 443 is the real application-serving listener. The TLS cert
+    # lives in the cert-manager namespace (created by the Certificate
+    # resource in cluster-addons/cert-pipeline); the ReferenceGrant in
+    # that namespace authorises this cross-namespace reference.
+    - name: https
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            group: ""
+            name: ticketing-tls
+            namespace: cert-manager
       allowedRoutes:
         namespaces:
           from: Same

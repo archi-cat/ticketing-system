@@ -152,3 +152,34 @@ jobs:
             echo "==> $(basename "$f")"
             envsubst < "$f" | kubectl apply -f -
           done
+
+      # ── Post-apply: DuckDNS A record → AGC frontend IP ─────────────────────
+      # The AGC frontend gets a new public IP on each Terraform-managed
+      # rebuild. Point the DuckDNS A record at it so browser requests to the
+      # custom domain reach this region's frontend. The DuckDNS update
+      # endpoint is a SET operation, fully idempotent — re-running with the
+      # same IP returns OK with no change.
+      - name: Update DuckDNS A record
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          DUCKDNS_FQDN:      ${{ secrets.DUCKDNS_FQDN }}
+          DUCKDNS_API_TOKEN: ${{ secrets.DUCKDNS_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          AGC_FQDN=$(terraform output -raw agc_frontend_fqdn)
+          AGC_IP=$(dig +short "$AGC_FQDN" | head -n 1)
+          if [ -z "$AGC_IP" ]; then
+            echo "::error::Failed to resolve AGC frontend FQDN $AGC_FQDN to an IP."
+            exit 1
+          fi
+
+          # DuckDNS update API: domains is the subdomain only (no .duckdns.org).
+          SUBDOMAIN="${DUCKDNS_FQDN%.duckdns.org}"
+          RESPONSE=$(curl -sS \
+            "https://www.duckdns.org/update?domains=${SUBDOMAIN}&token=${DUCKDNS_API_TOKEN}&ip=${AGC_IP}")
+
+          if [ "$RESPONSE" != "OK" ]; then
+            echo "::error::DuckDNS update returned '$RESPONSE' (expected 'OK')."
+            exit 1
+          fi
+          echo "✓ DuckDNS A record for $DUCKDNS_FQDN → $AGC_IP (AGC frontend $AGC_FQDN)"

@@ -16,7 +16,8 @@ Files are numbered to make the apply order explicit (it's also the alphabetical 
 | `03-cluster-issuer-letsencrypt-staging.yaml` | `ClusterIssuer/letsencrypt-staging` | Let's Encrypt staging issuer using DNS-01 via the DuckDNS webhook |
 | `04-cluster-issuer-letsencrypt-production.yaml` | `ClusterIssuer/letsencrypt-production` | Same, against the production ACME endpoint |
 | `05-certificate-ticketing-tls.yaml` | `Certificate/ticketing-tls` | The actual TLS cert. Points at the staging issuer for now — PR 3 switches it to production |
-| `06-push-secret-ticketing-tls.yaml` | `PushSecret/ticketing-tls-push` | Mirrors the issued cert into KV so AGC can read it (PR 3) |
+| `06-push-secret-ticketing-tls.yaml` | `PushSecret/ticketing-tls-push` | Mirrors the issued cert into KV — archive / Phase 4 Front Door consumption (AGC reads the K8s Secret directly, not from KV) |
+| `07-reference-grant-gateway-tls.yaml` | `ReferenceGrant/gateway-to-cert-manager-tls` | Authorises the Gateway in the `ticketing` namespace to reference the `ticketing-tls` Secret here in `cert-manager`. Gateway API requires explicit cross-namespace consent for certificateRefs |
 
 ## Placeholders
 

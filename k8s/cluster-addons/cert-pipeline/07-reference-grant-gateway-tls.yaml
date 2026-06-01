@@ -1,0 +1,23 @@
+# Authorises the Gateway in the ticketing namespace to reference the
+# ticketing-tls Secret here in the cert-manager namespace. Gateway API
+# requires this explicit cross-namespace handshake (a ReferenceGrant in
+# the target namespace) — without it, the HTTPS listener's
+# `certificateRefs` is rejected with a ResolvedRefs=False condition.
+#
+# Tightly scoped: only Gateway resources from the ticketing namespace
+# may reference Secrets in this namespace, and only the named
+# `ticketing-tls` Secret.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: gateway-to-cert-manager-tls
+  namespace: cert-manager
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: ticketing
+  to:
+    - group: ""
+      kind: Secret
+      name: ticketing-tls

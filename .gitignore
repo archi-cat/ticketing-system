@@ -67,3 +67,5 @@ phase_2.jpg
 phase_3_plan.md
 kubectl.exe
 kubectl.exe.sha256
+letsencrypt-staging-account-key.yaml
+letsencrypt-production-account-key.yaml
