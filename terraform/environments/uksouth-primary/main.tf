@@ -483,4 +483,12 @@ module "cert_manager_duckdns" {
   source = "../../modules/cluster-addons/cert-manager-duckdns"
 
   cert_manager_namespace = module.cert_manager.namespace
+
+  # The cobexer chart's templates include cert-manager Certificate and Issuer
+  # resources (for the webhook's own self-signed TLS), so the cert-manager
+  # CRDs must be registered AND its admission webhook must be operational
+  # before this release applies. The implicit dependency via the namespace
+  # input only orders against kubernetes_namespace, not against the
+  # helm_release that installs the CRDs — hence the explicit depends_on.
+  depends_on = [module.cert_manager]
 }

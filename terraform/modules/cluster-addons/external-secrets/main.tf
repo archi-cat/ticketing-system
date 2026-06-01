@@ -76,7 +76,10 @@ resource "helm_release" "this" {
   # - serviceAccount annotation: the workload-identity webhook keys off this
   #   to know which UAMI to mint tokens for.
   # - podLabel: tells the webhook to inject the federated token file +
-  #   AZURE_* env vars into the controller container.
+  #   AZURE_* env vars into the controller container. Forced to type="string"
+  #   because Helm's default "auto" type interprets "true" as a bool, and the
+  #   chart drops it straight into metadata.labels — which K8s requires to be
+  #   strings, not bools.
   set = [
     {
       name  = "installCRDs"
@@ -89,6 +92,7 @@ resource "helm_release" "this" {
     {
       name  = "podLabels.azure\\.workload\\.identity/use"
       value = "true"
+      type  = "string"
     },
   ]
 
