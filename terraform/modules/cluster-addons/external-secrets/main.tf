@@ -72,6 +72,13 @@ resource "helm_release" "this" {
   version    = var.chart_version
   namespace  = kubernetes_namespace.this.metadata[0].name
 
+  # Idempotency safeguards for the teardown/rebuild loop:
+  # - atomic: clean up the partial install on failure (also implies wait)
+  # - replace: allow re-using the release name if a previous attempt left
+  #   the release record behind in a failed state
+  atomic  = true
+  replace = true
+
   # - installCRDs: ship the ESO CRDs with the chart so upgrades are one bump.
   # - serviceAccount annotation: the workload-identity webhook keys off this
   #   to know which UAMI to mint tokens for.

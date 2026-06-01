@@ -28,6 +28,13 @@ resource "helm_release" "duckdns_webhook" {
   version    = var.webhook_chart_version
   namespace  = var.cert_manager_namespace
 
+  # Idempotency safeguards for the teardown/rebuild loop:
+  # - atomic: clean up the partial install on failure (also implies wait)
+  # - replace: allow re-using the release name if a previous attempt left
+  #   the release record behind in a failed state
+  atomic  = true
+  replace = true
+
   set = [
     {
       # The ClusterIssuer below references this groupName + solverName pair
