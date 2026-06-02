@@ -153,12 +153,36 @@ jobs:
             envsubst < "$f" | kubectl apply -f -
           done
 
-      # ── Post-apply: DuckDNS A record → AGC frontend IP ─────────────────────
-      # The AGC frontend gets a new public IP on each Terraform-managed
-      # rebuild. Point the DuckDNS A record at it so browser requests to the
-      # custom domain reach this region's frontend. The DuckDNS update
-      # endpoint is a SET operation, fully idempotent — re-running with the
-      # same IP returns OK with no change.
+      # ── Post-apply: Gateway ────────────────────────────────────────────────
+      # The Gateway needs to be up before we can update DuckDNS — its
+      # status.addresses[0].value is the canonical hostname AGC exposes for
+      # the bound frontend, and that's the truthful source for the A record.
+      # deploy-gateway.yml stays around for ad-hoc Gateway edits between
+      # deploys; this step owns the bootstrap path.
+      - name: Apply gateway overlay
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          AGC_ID=$(terraform output -raw agc_id)
+          AGC_FRONTEND_NAME=$(terraform output -raw agc_frontend_name)
+          export AGC_ID AGC_FRONTEND_NAME
+          kubectl kustomize ../../../k8s/overlays/uksouth/gateway \
+            | envsubst \
+            | kubectl apply -f -
+
+      - name: Wait for Gateway to be Programmed
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          kubectl wait gateway/ticketing -n ticketing \
+            --for=condition=Programmed \
+            --timeout=5m
+
+      # ── Post-apply: DuckDNS A record → Gateway's address ────────────────────
+      # Reading from the Gateway's status (not from any Terraform output)
+      # because the Gateway is the source of truth for where traffic actually
+      # lands — regardless of which AGC frontend the ALB Controller ended up
+      # binding to. The DuckDNS update endpoint is a SET operation, fully
+      # idempotent — re-running with the same IP returns OK with no change.
       - name: Update DuckDNS A record
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
@@ -166,20 +190,25 @@ jobs:
           DUCKDNS_API_TOKEN: ${{ secrets.DUCKDNS_API_TOKEN }}
         run: |
           set -euo pipefail
-          AGC_FQDN=$(terraform output -raw agc_frontend_fqdn)
-          AGC_IP=$(dig +short "$AGC_FQDN" | head -n 1)
-          if [ -z "$AGC_IP" ]; then
-            echo "::error::Failed to resolve AGC frontend FQDN $AGC_FQDN to an IP."
+          GATEWAY_FQDN=$(kubectl get gateway -n ticketing ticketing \
+            -o jsonpath='{.status.addresses[0].value}')
+          if [ -z "$GATEWAY_FQDN" ]; then
+            echo "::error::Gateway has no status.addresses[0].value yet."
+            exit 1
+          fi
+          GATEWAY_IP=$(dig +short "$GATEWAY_FQDN" | head -n 1)
+          if [ -z "$GATEWAY_IP" ]; then
+            echo "::error::Failed to resolve Gateway address $GATEWAY_FQDN to an IP."
             exit 1
           fi
 
           # DuckDNS update API: domains is the subdomain only (no .duckdns.org).
           SUBDOMAIN="${DUCKDNS_FQDN%.duckdns.org}"
           RESPONSE=$(curl -sS \
-            "https://www.duckdns.org/update?domains=${SUBDOMAIN}&token=${DUCKDNS_API_TOKEN}&ip=${AGC_IP}")
+            "https://www.duckdns.org/update?domains=${SUBDOMAIN}&token=${DUCKDNS_API_TOKEN}&ip=${GATEWAY_IP}")
 
           if [ "$RESPONSE" != "OK" ]; then
             echo "::error::DuckDNS update returned '$RESPONSE' (expected 'OK')."
             exit 1
           fi
-          echo "✓ DuckDNS A record for $DUCKDNS_FQDN → $AGC_IP (AGC frontend $AGC_FQDN)"
+          echo "✓ DuckDNS A record for $DUCKDNS_FQDN → $GATEWAY_IP (Gateway address $GATEWAY_FQDN)"

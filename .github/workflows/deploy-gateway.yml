@@ -1,5 +1,11 @@
 name: Deploy Gateway
 
+# Bootstrap deploys apply the Gateway as part of infra-uksouth.yml — this
+# workflow is retained for ad-hoc Gateway edits between full redeploys
+# (e.g. tweaking listener config, adjusting the HTTPRoute redirect, adding
+# annotations). Push to main on the listed paths or manual dispatch will
+# re-apply against the existing cluster.
+
 on:
   push:
     branches: [main]
@@ -58,10 +64,12 @@ jobs:
         working-directory: terraform/environments/uksouth-primary
         run: |
           set -euo pipefail
-          echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)" >> "$GITHUB_OUTPUT"
+          echo "aks_cluster_name=$(terraform output -raw aks_cluster_name)"     >> "$GITHUB_OUTPUT"
           echo "resource_group_name=$(terraform output -raw resource_group_name)" >> "$GITHUB_OUTPUT"
-          echo "agc_id=$(terraform output -raw agc_id)" >> "$GITHUB_OUTPUT"
-          echo "agc_frontend_id=$(terraform output -raw agc_frontend_id)" >> "$GITHUB_OUTPUT"
+          echo "agc_id=$(terraform output -raw agc_id)"                         >> "$GITHUB_OUTPUT"
+          # Frontend NAME, not ID — Gateway.spec.addresses[].value is documented
+          # to take the frontend name in AGC's BYO binding pattern.
+          echo "agc_frontend_name=$(terraform output -raw agc_frontend_name)"   >> "$GITHUB_OUTPUT"
 
       - name: Get AKS credentials
         run: |
@@ -81,8 +89,8 @@ jobs:
 
       - name: Render gateway manifests
         env:
-          AGC_ID:          ${{ steps.tf.outputs.agc_id }}
-          AGC_FRONTEND_ID: ${{ steps.tf.outputs.agc_frontend_id }}
+          AGC_ID:            ${{ steps.tf.outputs.agc_id }}
+          AGC_FRONTEND_NAME: ${{ steps.tf.outputs.agc_frontend_name }}
         run: |
           set -euo pipefail
           mkdir -p k8s-rendered
