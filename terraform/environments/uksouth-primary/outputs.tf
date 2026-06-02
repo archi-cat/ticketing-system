@@ -30,12 +30,17 @@ output "agc_id" {
 }
 
 output "agc_frontend_id" {
-  description = "AGC frontend ID — set on Gateway alb.networking.azure.io/alb-frontend annotation."
+  description = "AGC frontend ARM ID — kept for reference; not used in Gateway annotations any more."
   value       = module.agc.frontend_id
 }
 
+output "agc_frontend_name" {
+  description = "AGC frontend name — referenced from Gateway.spec.addresses[].value in the BYO binding (docs use the frontend NAME, not its ARM ID)."
+  value       = module.agc.frontend_name
+}
+
 output "agc_frontend_fqdn" {
-  description = "AGC frontend FQDN — resolved to its public IP for the DuckDNS A-record update step."
+  description = "AGC frontend FQDN — diagnostic. The DuckDNS step now reads the Gateway's status.addresses[0].value instead, which is the canonical hostname AGC exposes for the bound Gateway."
   value       = module.agc.frontend_fqdn
 }
 

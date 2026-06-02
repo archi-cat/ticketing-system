@@ -4,5 +4,15 @@ metadata:
   name: ticketing
   namespace: ticketing
   annotations:
+    # Points the Gateway at the BYO AGC instance. The frontend is bound via
+    # spec.addresses below — that's the documented BYO pattern (the old
+    # `alb.networking.azure.io/alb-frontend` annotation was silently ignored
+    # by the ALB Controller).
     alb.networking.azure.io/alb-id: ${AGC_ID}
-    alb.networking.azure.io/alb-frontend: ${AGC_FRONTEND_ID}
+spec:
+  # Pin the Gateway to the named AGC frontend that Terraform provisions —
+  # otherwise the ALB Controller may pick or auto-create a different one.
+  # NOTE: the value is the frontend NAME, not its ARM resource ID.
+  addresses:
+    - type: alb.networking.azure.io/alb-frontend
+      value: ${AGC_FRONTEND_NAME}
