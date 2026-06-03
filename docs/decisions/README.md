@@ -31,6 +31,13 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 | [0011](0011-kustomize-manifest-structure.md) | Kubernetes manifests with Kustomize — base + per-region overlays | Accepted |
 | [0012](0012-deploy-pipeline-design.md) | Deploy pipeline — per-service workflows with reusable common workflow | Accepted |
 | [0013](0013-managed-redis-migration.md) | Migrate from Azure Cache for Redis to Azure Managed Redis | Accepted (supersedes 0008) |
+| [0014](0014-agc-deployment-pattern.md) | AGC deployment pattern — BYO over ALB-managed | Accepted |
+| [0015](0015-aks-node-resource-group-colocation.md) | AKS node resource group colocation | Accepted |
+| [0016](0016-azapi-for-agc-addon.md) | Use azapi to enable the AGC AKS add-on | Accepted |
+| [0017](0017-phase-reorder-ci-before-hardening.md) | Phase reorder — CI maturity before production hardening | Accepted |
+| [0018](0018-database-bootstrap-jobs.md) | Database bootstrap via in-cluster Kubernetes Jobs | Accepted |
+| [0019](0019-db-load-events-design.md) | Event data loading via Blob Storage and a K8s Job | Accepted |
+| [0020](0020-gateway-tls-termination.md) | Gateway TLS termination — cert-manager + Let's Encrypt + DuckDNS + Gateway API | Accepted |
 
 | [0003](0003-use-fastapi.md) | Use FastAPI for the HTTP API | Accepted |
 | [0004](0004-use-sqlalchemy-async.md) | Use SQLAlchemy 2.0 async with Alembic | Accepted |
@@ -38,3 +45,5 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 | [0006](0006-service-bus-premium.md) | Use Service Bus Premium for messaging | Accepted |
 | [0007](0007-redis-distributed-locking.md) | Use Redis for distributed locking | Accepted |
 | [0008](0008-multi-region-active-passive.md) | Multi-region active-passive (not active-active) | Accepted |
+</content>
+</invoke>
