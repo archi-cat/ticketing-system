@@ -51,7 +51,12 @@ variable "servicebus_namespace_id" {
 # ── AKS ──────────────────────────────────────────────────────────────────────
 
 variable "aks_cluster_id" {
-  description = "AKS managed cluster resource ID — scope for the node CPU / memory alerts (using Insights.Container metrics)"
+  description = "AKS managed cluster resource ID — reserved (currently no metric alerts scoped to the cluster; node CPU / memory alerts query Log Analytics instead because Insights.Container/nodes percentage metrics are not exposed as Azure Monitor Metrics)"
+  type        = string
+}
+
+variable "log_analytics_workspace_id" {
+  description = "Log Analytics workspace resource ID — scope for the AKS node CPU / memory scheduled query alerts (Container Insights InsightsMetrics table)"
   type        = string
 }
 
