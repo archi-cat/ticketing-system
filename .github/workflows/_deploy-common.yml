@@ -147,7 +147,7 @@ jobs:
           echo "acr_token=$TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Log in to ACR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ steps.acr.outputs.acr_login_server }}
           # Magic placeholder username Microsoft documents for token-based auth
