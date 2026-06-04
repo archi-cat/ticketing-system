@@ -1,0 +1,32 @@
+# API receives ingress from two sources:
+# 1. AGC frontend → api pods on port 8000 (real traffic, via Gateway routing).
+#    Source IP is the AGC's internal address in the `agc` subnet (10.10.3.0/24).
+# 2. Kubelet → api pods on port 8000 (liveness/readiness/startup probes).
+#    Source is the local node (Cilium reserved identity `host`).
+#
+# Default-deny in 00- blocks all ingress until allow rules exist; this
+# policy is what makes the API reachable through the Gateway.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: api-ingress
+  namespace: ticketing
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  ingress:
+    # AGC frontend → api (real traffic)
+    - fromCIDR:
+        - 10.10.3.0/24
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+    # Kubelet probes — Cilium reserved identity for the local node
+    - fromEntities:
+        - host
+      toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP

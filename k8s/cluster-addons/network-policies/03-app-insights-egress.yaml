@@ -1,0 +1,33 @@
+# The three app services (api, worker, scheduler) auto-send OpenTelemetry
+# traces to Application Insights when APPLICATIONINSIGHTS_CONNECTION_STRING
+# is set (see each service's observability.py — uses
+# `azure.monitor.opentelemetry.configure_azure_monitor`).
+#
+# Telemetry ingestion is at `<region>-N.in.applicationinsights.azure.com`
+# where N varies per AI instance — the wildcard covers both API + workers
+# instances. Live metrics endpoint is NOT needed (disabled in code with
+# `enable_live_metrics=False`).
+#
+# Bootstrap jobs (db-grant, db-migrate, db-load-events) are excluded —
+# they're short-lived ops scripts, not instrumented.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-app-insights-egress
+  namespace: ticketing
+spec:
+  endpointSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - api
+          - worker
+          - scheduler
+  egress:
+    - toFQDNs:
+        - matchPattern: "*.in.applicationinsights.azure.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

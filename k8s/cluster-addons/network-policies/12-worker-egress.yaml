@@ -1,0 +1,31 @@
+# Worker needs:
+# - PostgreSQL — postgres subnet 10.10.5.0/24, port 5432
+# - Redis — private_endpoints subnet 10.10.4.0/24, port 10000
+# - Service Bus — private_endpoints subnet 10.10.4.0/24, port 443
+#
+# Same shape as api-egress minus the http server ingress. No additional
+# external egress needs beyond DNS/AAD/App Insights covered globally.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: worker-egress
+  namespace: ticketing
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: worker
+  egress:
+    - toCIDR:
+        - 10.10.5.0/24
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+    - toCIDR:
+        - 10.10.4.0/24
+      toPorts:
+        - ports:
+            - port: "10000"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP

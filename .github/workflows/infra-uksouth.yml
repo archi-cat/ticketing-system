@@ -177,6 +177,22 @@ jobs:
             --for=condition=Programmed \
             --timeout=5m
 
+      # ── Post-apply: NetworkPolicies (landing-zone security baseline) ───────
+      # Default-deny + per-component allow rules for the ticketing namespace.
+      # Applied here so the namespace has its security baseline in place
+      # before any application pods schedule. ACNS (security.enabled +
+      # observability.enabled) is enabled on the cluster by the Terraform
+      # module — required for the toFQDNs rules in 02 and 03 to enforce
+      # rather than silently fail-open.
+      - name: Apply NetworkPolicies
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          for f in ../../../k8s/cluster-addons/network-policies/*.yaml; do
+            echo "==> $(basename "$f")"
+            kubectl apply -f "$f"
+          done
+
       # ── Post-apply: DuckDNS A record → Gateway's address ────────────────────
       # Reading from the Gateway's status (not from any Terraform output)
       # because the Gateway is the source of truth for where traffic actually

@@ -1,0 +1,31 @@
+# Scheduler needs:
+# - PostgreSQL — postgres subnet 10.10.5.0/24, port 5432 (reads expired
+#   reservations to sweep)
+# - Redis — private_endpoints subnet 10.10.4.0/24, port 10000 (leader
+#   election lease)
+#
+# Notably NOT Service Bus — the scheduler doesn't publish or consume
+# messages directly. It only sweeps the database and relies on the api to
+# publish any downstream events.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: scheduler-egress
+  namespace: ticketing
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: scheduler
+  egress:
+    - toCIDR:
+        - 10.10.5.0/24
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+    - toCIDR:
+        - 10.10.4.0/24
+      toPorts:
+        - ports:
+            - port: "10000"
+              protocol: TCP

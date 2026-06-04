@@ -182,3 +182,48 @@ resource "time_sleep" "ingress_profile_settle" {
   depends_on      = [azapi_update_resource.ingress_profile]
   create_duration = "180s"
 }
+
+# ─── Advanced Container Networking Services (ACNS) ───────────────────────────
+# Enables:
+# - Cilium FQDN-based egress filtering (security.enabled) — needed by the
+#   CiliumNetworkPolicy `toFQDNs` rules in k8s/cluster-addons/network-policies/
+#   for egress to login.microsoftonline.com and *.in.applicationinsights.azure.com
+# - Hubble observability (observability.enabled) — flow visibility for
+#   debugging policy drops
+#
+# Not surfaced via the azurerm provider's network_profile block as of writing,
+# so we PATCH via azapi the same way we enable the AGC ingress profile above.
+# Sequential on top of the ingress_profile_settle to avoid AKSOperationPreempted.
+
+resource "azapi_update_resource" "acns" {
+  type        = "Microsoft.ContainerService/managedClusters@2025-09-02-preview"
+  resource_id = azurerm_kubernetes_cluster.main.id
+
+  body = {
+    properties = {
+      networkProfile = {
+        advancedNetworking = {
+          enabled = true
+          observability = {
+            enabled = true
+          }
+          security = {
+            enabled = true
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [time_sleep.ingress_profile_settle]
+
+  retry = {
+    error_message_regex  = ["AKSOperationPreempted", "OperationNotAllowed"]
+    interval_seconds     = 30
+    max_interval_seconds = 300
+  }
+
+  timeouts {
+    update = "30m"
+  }
+}
