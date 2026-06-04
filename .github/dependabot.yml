@@ -1,0 +1,118 @@
+# Dependabot configuration — Phase 3 Tier 1 #4
+#
+# Production-grade grouping strategy: minor + patch updates are bundled into
+# one PR per ecosystem per week (low review overhead, easy to revert as a
+# group). Major updates open as individual PRs so they each get scrutinised
+# on their own merits.
+#
+# All update PRs run through pr-validation.yml — type checks, tests, Trivy
+# scans, kustomize build — before they're mergeable.
+#
+# Dependabot also reads SHA-pinned `uses: <action>@<sha>` references in
+# workflows when the `# <tag>` comment is present, so the SHA-pinning work
+# in #5 doesn't break this.
+
+version: 2
+
+updates:
+
+  # ── Python — application services ───────────────────────────────────────────
+  # Each service has its own pyproject.toml + uv.lock; Dependabot tracks the
+  # lockfile so updates respect the existing constraints.
+
+  - package-ecosystem: "pip"
+    directories:
+      - "/app/api"
+      - "/app/worker"
+      - "/app/scheduler"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      pip-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── Docker — application + bootstrap base images ────────────────────────────
+  # Tracks `FROM <image>:<tag>` references. Catches base-image CVE patches
+  # in the same loop as language deps.
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/app/api"
+      - "/app/worker"
+      - "/app/scheduler"
+      - "/bootstrap/db-grant"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      docker-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── GitHub Actions ──────────────────────────────────────────────────────────
+  # Reads every `uses: …@<version>` across every workflow in .github/workflows.
+  # Once #5 SHA-pins the actions with their tags in comments, Dependabot
+  # follows the comments to know which version to track for updates.
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ── Terraform — providers ───────────────────────────────────────────────────
+  # Scans `terraform { required_providers { ... } }` blocks. Listed are the
+  # two state roots — modules' required_providers are version constraints
+  # that the env-level versions satisfy, so updating at the env level is
+  # sufficient. If a specific module ever needs an independent provider
+  # version (e.g. azapi pinning), add the module's directory here too.
+
+  - package-ecosystem: "terraform"
+    directories:
+      - "/terraform/environments/uksouth-primary"
+      - "/terraform/shared/acr"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "terraform"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      terraform-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
