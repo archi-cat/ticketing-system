@@ -59,10 +59,33 @@ variable "postgres_entra_admin_principal_type" {
 }
 
 # ── Gateway TLS (Phase 3 Tier 1 #1) ───────────────────────────────────────────
-# The DuckDNS FQDN, ACME email, and DuckDNS API token are no longer Terraform
-# variables. They're applied to the cluster directly by the infra-uksouth
-# workflow as repo secrets — DUCKDNS_FQDN and ACME_EMAIL via envsubst into
-# the cert-pipeline manifests, DUCKDNS_API_TOKEN via az keyvault secret set.
+# Most TLS-related values (DUCKDNS_FQDN, ACME_EMAIL, DUCKDNS_API_TOKEN) are
+# applied to the cluster directly by the infra-uksouth workflow as repo
+# secrets — see k8s/cluster-addons/cert-pipeline/. The duckdns_fqdn IS also
+# needed at Terraform plan-time for the alerts module's URL ping test, so
+# it's surfaced here from the same DUCKDNS_FQDN secret.
+
+variable "duckdns_fqdn" {
+  description = "Full DuckDNS FQDN for the Gateway, e.g. ticketing-floryda.duckdns.org. Used by the alerts module to construct the URL ping test target."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9-]+\\.duckdns\\.org$", var.duckdns_fqdn))
+    error_message = "duckdns_fqdn must look like '<subdomain>.duckdns.org' (lowercase alphanumeric + hyphens in the subdomain)."
+  }
+}
+
+# ── Alerting (Phase 3 Tier 1 #3) ──────────────────────────────────────────────
+
+variable "alert_email_address" {
+  description = "Email address that receives all baseline alerts. Reuses the ACME_EMAIL secret for this learning project — in real production this would be a separate operations distribution list."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[^@]+@[^@]+\\.[^@]+$", var.alert_email_address))
+    error_message = "alert_email_address must look like an email address."
+  }
+}
 
 # ── Tags ──────────────────────────────────────────────────────────────────────
 

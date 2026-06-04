@@ -76,6 +76,8 @@ jobs:
             -var="gh_actions_sp_object_id=${{ secrets.GH_ACTIONS_SP_OBJECT_ID }}" \
             -var="postgres_entra_admin_object_id=${{ secrets.POSTGRES_ENTRA_ADMIN_OBJECT_ID }}" \
             -var="postgres_entra_admin_name=${{ secrets.POSTGRES_ENTRA_ADMIN_NAME }}" \
+            -var="duckdns_fqdn=${{ secrets.DUCKDNS_FQDN }}" \
+            -var="alert_email_address=${{ secrets.ACME_EMAIL }}" \
             -out=tfplan -no-color | tee plan_output.txt
 
       - name: Comment plan on PR
