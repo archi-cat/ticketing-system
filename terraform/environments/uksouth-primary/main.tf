@@ -492,3 +492,26 @@ module "cert_manager_duckdns" {
   # helm_release that installs the CRDs — hence the explicit depends_on.
   depends_on = [module.cert_manager]
 }
+
+# ── Baseline alerts (Phase 3 Tier 1 #3) ───────────────────────────────────────
+# Action group + 8 alerts + 1 URL ping test, all routed to alert_email_address.
+# See the alerts module README for the per-alert thresholds and rationale.
+
+module "alerts" {
+  source = "../../modules/alerts"
+
+  resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
+  alert_email_address = var.alert_email_address
+
+  app_insights_api_id     = module.observability.application_insights_ids.api
+  app_insights_workers_id = module.observability.application_insights_ids.workers
+
+  postgres_server_id      = module.postgres.server_id
+  servicebus_namespace_id = module.servicebus.namespace_id
+  aks_cluster_id          = module.aks.cluster_id
+
+  ping_target_url = "https://${var.duckdns_fqdn}/health"
+
+  tags = var.tags
+}

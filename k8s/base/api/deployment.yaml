@@ -45,6 +45,14 @@ spec:
           env:
             - name: SERVICE_NAME
               value: ticketing-api
+            # OTEL_SERVICE_NAME is read by the Azure Monitor OpenTelemetry SDK
+            # to set cloud_RoleName on every trace / log / metric record sent
+            # to Application Insights. Custom SERVICE_NAME above is for our
+            # own settings/structlog; OTEL_SERVICE_NAME is what makes the
+            # service identifiable in App Insights' Application Map, Live
+            # Metrics, and any cloud_RoleName-scoped KQL alerts.
+            - name: OTEL_SERVICE_NAME
+              value: ticketing-api
             - name: POD_NAME
               valueFrom:
                 fieldRef:
