@@ -12,8 +12,8 @@ All alerts route to the same `alert_email_address` — for this learning project
 | `azurerm_monitor_metric_alert.postgres_cpu` | Metric alert | Postgres CPU > threshold (15-min average) |
 | `azurerm_monitor_metric_alert.postgres_connections` | Metric alert | Postgres `active_connections` > 80% of `max_connections` |
 | `azurerm_monitor_metric_alert.servicebus_dlq` | Metric alert | Any deadletter messages on the Service Bus namespace |
-| `azurerm_monitor_metric_alert.aks_node_cpu` | Metric alert | Per-node CPU > threshold (Container Insights metric) |
-| `azurerm_monitor_metric_alert.aks_node_memory` | Metric alert | Per-node memory working-set > threshold |
+| `azurerm_monitor_scheduled_query_rules_alert_v2.aks_node_cpu` | KQL alert | Per-node CPU > threshold (InsightsMetrics from Container Insights, queried via Log Analytics — these metrics aren't exposed under Azure Monitor Metrics despite the `Insights.Container/nodes` namespace) |
+| `azurerm_monitor_scheduled_query_rules_alert_v2.aks_node_memory` | KQL alert | Per-node memory working-set > threshold (same source as CPU) |
 | `azurerm_monitor_scheduled_query_rules_alert_v2.api_5xx_rate` | KQL alert | Count of 5xx responses in 15 min |
 | `azurerm_monitor_scheduled_query_rules_alert_v2.api_p99_latency` | KQL alert | p99 request duration in 15 min |
 | `azurerm_monitor_scheduled_query_rules_alert_v2.scheduler_stalled` | KQL alert | No traces from `ticketing-scheduler` in N minutes |

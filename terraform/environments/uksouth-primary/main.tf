@@ -511,6 +511,8 @@ module "alerts" {
   servicebus_namespace_id = module.servicebus.namespace_id
   aks_cluster_id          = module.aks.cluster_id
 
+  log_analytics_workspace_id = module.observability.log_analytics_workspace_id
+
   ping_target_url = "https://${var.duckdns_fqdn}/health"
 
   tags = var.tags

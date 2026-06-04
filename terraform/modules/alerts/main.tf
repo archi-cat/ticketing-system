@@ -99,9 +99,13 @@ resource "azurerm_monitor_metric_alert" "servicebus_dlq" {
   criteria {
     metric_namespace = "Microsoft.ServiceBus/namespaces"
     metric_name      = "DeadletteredMessages"
-    aggregation      = "Total"
-    operator         = "GreaterThan"
-    threshold        = var.servicebus_dlq_threshold
+    # DLQ depth is a gauge (point-in-time count), not a counter — Total isn't
+    # a valid aggregation. Maximum gives "highest DLQ count seen in this
+    # window", which is the right semantic for "any DLQ message warrants
+    # attention."
+    aggregation = "Maximum"
+    operator    = "GreaterThan"
+    threshold   = var.servicebus_dlq_threshold
   }
 
   action {
@@ -111,68 +115,96 @@ resource "azurerm_monitor_metric_alert" "servicebus_dlq" {
   tags = var.tags
 }
 
-# ── AKS node CPU ─────────────────────────────────────────────────────────────
-# Uses the Insights.Container/nodes namespace — populated by Container
-# Insights (the oms_agent already enabled on the cluster). Per-node, not
-# cluster average — a single hot node is the actionable signal.
+# ── AKS node CPU / memory ────────────────────────────────────────────────────
+# Container Insights writes per-node CPU and memory percentages into the
+# InsightsMetrics table in Log Analytics, but those metrics are NOT exposed
+# under Azure Monitor Metrics (despite the `Insights.Container/nodes`
+# namespace looking like one). The metric_alert form returns
+# "metric not found" at apply time. The fix: scheduled query alerts against
+# Log Analytics, returning one row per node (Computer) so the alert can
+# fire per-node via the dimension below.
 
-resource "azurerm_monitor_metric_alert" "aks_node_cpu" {
+resource "azurerm_monitor_scheduled_query_rules_alert_v2" "aks_node_cpu" {
   name                = "alert-aks-node-cpu-high"
   resource_group_name = var.resource_group_name
-  scopes              = [var.aks_cluster_id]
-  description         = "AKS node CPU usage > ${var.aks_node_cpu_threshold}% (10-min average) on any node."
+  location            = var.location
+  scopes              = [var.log_analytics_workspace_id]
+  description         = "AKS node CPU usage > ${var.aks_node_cpu_threshold}% (15-min max) on at least one node."
   severity            = 2
-  frequency           = "PT15M"
-  window_size         = "PT15M"
+
+  evaluation_frequency = "PT15M"
+  window_duration      = "PT15M"
 
   criteria {
-    metric_namespace = "Insights.Container/nodes"
-    metric_name      = "cpuUsagePercentage"
-    aggregation      = "Average"
-    operator         = "GreaterThan"
-    threshold        = var.aks_node_cpu_threshold
+    query = <<-KQL
+      InsightsMetrics
+      | where Namespace == "container.azm.ms/nodes"
+      | where Name == "cpuUsagePercentage"
+      | summarize cpuPct = max(todouble(Val)) by Computer
+    KQL
+
+    operator                = "GreaterThan"
+    threshold               = var.aks_node_cpu_threshold
+    time_aggregation_method = "Maximum"
+    metric_measure_column   = "cpuPct"
 
     dimension {
-      name     = "node"
+      name     = "Computer"
       operator = "Include"
       values   = ["*"]
+    }
+
+    failing_periods {
+      minimum_failing_periods_to_trigger_alert = 1
+      number_of_evaluation_periods             = 1
     }
   }
 
   action {
-    action_group_id = azurerm_monitor_action_group.this.id
+    action_groups = [azurerm_monitor_action_group.this.id]
   }
 
   tags = var.tags
 }
 
-# ── AKS node memory ──────────────────────────────────────────────────────────
-
-resource "azurerm_monitor_metric_alert" "aks_node_memory" {
+resource "azurerm_monitor_scheduled_query_rules_alert_v2" "aks_node_memory" {
   name                = "alert-aks-node-memory-high"
   resource_group_name = var.resource_group_name
-  scopes              = [var.aks_cluster_id]
-  description         = "AKS node memory working-set > ${var.aks_node_memory_threshold}% (10-min average) on any node."
+  location            = var.location
+  scopes              = [var.log_analytics_workspace_id]
+  description         = "AKS node memory working-set > ${var.aks_node_memory_threshold}% (15-min max) on at least one node."
   severity            = 2
-  frequency           = "PT15M"
-  window_size         = "PT15M"
+
+  evaluation_frequency = "PT15M"
+  window_duration      = "PT15M"
 
   criteria {
-    metric_namespace = "Insights.Container/nodes"
-    metric_name      = "memoryWorkingSetPercentage"
-    aggregation      = "Average"
-    operator         = "GreaterThan"
-    threshold        = var.aks_node_memory_threshold
+    query = <<-KQL
+      InsightsMetrics
+      | where Namespace == "container.azm.ms/nodes"
+      | where Name == "memoryWorkingSetPercentage"
+      | summarize memPct = max(todouble(Val)) by Computer
+    KQL
+
+    operator                = "GreaterThan"
+    threshold               = var.aks_node_memory_threshold
+    time_aggregation_method = "Maximum"
+    metric_measure_column   = "memPct"
 
     dimension {
-      name     = "node"
+      name     = "Computer"
       operator = "Include"
       values   = ["*"]
+    }
+
+    failing_periods {
+      minimum_failing_periods_to_trigger_alert = 1
+      number_of_evaluation_periods             = 1
     }
   }
 
   action {
-    action_group_id = azurerm_monitor_action_group.this.id
+    action_groups = [azurerm_monitor_action_group.this.id]
   }
 
   tags = var.tags
@@ -185,22 +217,26 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "api_5xx_rate" {
   resource_group_name = var.resource_group_name
   location            = var.location
   scopes              = [var.app_insights_api_id]
-  description         = "API 5xx response count > ${var.api_5xx_threshold} in a 10-minute window."
+  description         = "API 5xx response count > ${var.api_5xx_threshold} in a 15-minute window."
   severity            = 2
 
   evaluation_frequency = "PT15M"
   window_duration      = "PT15M"
 
   criteria {
+    # Alias the count to a named column so metric_measure_column can reference
+    # it. With time_aggregation_method = "Total" the scheduled query alert
+    # requires a metric_measure_column.
     query = <<-KQL
       requests
       | where toint(resultCode) >= 500
-      | count
+      | summarize count_5xx = count()
     KQL
 
     operator                = "GreaterThan"
     threshold               = var.api_5xx_threshold
     time_aggregation_method = "Total"
+    metric_measure_column   = "count_5xx"
 
     failing_periods {
       minimum_failing_periods_to_trigger_alert = 1
@@ -222,7 +258,7 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "api_p99_latency" {
   resource_group_name = var.resource_group_name
   location            = var.location
   scopes              = [var.app_insights_api_id]
-  description         = "API p99 request duration > ${var.api_p99_latency_ms_threshold}ms over a 10-minute window."
+  description         = "API p99 request duration > ${var.api_p99_latency_ms_threshold}ms over a 15-minute window."
   severity            = 2
 
   evaluation_frequency = "PT15M"
@@ -231,12 +267,13 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "api_p99_latency" {
   criteria {
     query = <<-KQL
       requests
-      | summarize p99 = percentile(duration, 99)
+      | summarize p99_duration_ms = percentile(duration, 99)
     KQL
 
     operator                = "GreaterThan"
     threshold               = var.api_p99_latency_ms_threshold
     time_aggregation_method = "Average"
+    metric_measure_column   = "p99_duration_ms"
 
     failing_periods {
       minimum_failing_periods_to_trigger_alert = 1
@@ -253,9 +290,8 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "api_p99_latency" {
 
 # ── Scheduler stalled ────────────────────────────────────────────────────────
 # Fires when the scheduler hasn't emitted any traces in the configured window.
-# Assumes the scheduler's structlog output sets cloud_RoleName = "ticketing-
-# scheduler" — confirm this from the service's settings.py. If the role name
-# differs, adjust the KQL.
+# Relies on cloud_RoleName == "ticketing-scheduler" — set by the OpenTelemetry
+# SDK from the OTEL_SERVICE_NAME env var on the scheduler Deployment.
 
 resource "azurerm_monitor_scheduled_query_rules_alert_v2" "scheduler_stalled" {
   name                = "alert-scheduler-stalled"
@@ -272,12 +308,13 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "scheduler_stalled" {
     query = <<-KQL
       traces
       | where cloud_RoleName == "ticketing-scheduler"
-      | count
+      | summarize trace_count = count()
     KQL
 
     operator                = "LessThan"
     threshold               = 1
     time_aggregation_method = "Total"
+    metric_measure_column   = "trace_count"
 
     failing_periods {
       minimum_failing_periods_to_trigger_alert = 1
@@ -304,15 +341,19 @@ resource "azurerm_application_insights_standard_web_test" "https_ping" {
   location                = var.location
   application_insights_id = var.app_insights_api_id
 
+  # Confirmed-valid web test agent IDs. Dublin (`emea-ie-dub-azr`) isn't
+  # a supported location despite the naming pattern suggesting it would be
+  # Other potentially-tempting EMEA IDs to avoid: `emea-ru-msa-edge` (Russia, retired);
+  # `emea-au-syd-edge` (despite the name, that's Asia-Pacific).
   geo_locations = [
-    "emea-nl-ams-azr",  # Amsterdam
-    "emea-ie-dub-azr",  # Dublin
-    "emea-fr-pra-edge", # Paris
-    "emea-se-sto-edge", # Stockholm
-    "emea-gb-db3-azr",  # London
+    "emea-nl-ams-azr",  # West Europe (Amsterdam)
+    "emea-fr-pra-edge", # France South (Paris)
+    "emea-se-sto-edge", # Sweden Central (Stockholm)
+    "emea-gb-db3-azr",  # UK West
+    "us-va-ash-azr",    # East US (Virginia) — transatlantic anchor
   ]
 
-  frequency     = 600 # 10 minutes
+  frequency     = 900 # 15 minutes — matches the cadence of every other alert
   timeout       = 30
   enabled       = true
   retry_enabled = true
