@@ -113,13 +113,14 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 
 ---
 
-### 6. Key Vault purge protection
+### 6. Key Vault purge protection — DEFERRED
+- [-] DEFERRED for the duration of the deploy-tear-down loop. Revisit once the project stops tearing down regularly.
 - [ ] `purge_protection_enabled = true` in the Key Vault module
 - [ ] Remove `AVD-AZU-0016` from `.trivyignore`
 
-**Why:** Suppression was deferred to Phase 3.
+**Why:** Suppression was originally deferred from Phase 2 to here.
 **Effort:** small
-**Note:** Irreversible — a soft-deleted vault blocks recreating one with the same name. Means tear-down loops need a unique vault name each cycle, or use the same vault and just clean its secrets. Worth a thought before flipping.
+**Why deferred (again):** Irreversible — a soft-deleted vault blocks recreating one with the same name. The current deploy → test → tear-down rhythm would either require a unique vault name each cycle (cosmetic churn) or a soft-delete purge step before each fresh deploy (operational friction). Acceptable trade-off while iterating; flip once the cluster runs continuously.
 
 ---
 
