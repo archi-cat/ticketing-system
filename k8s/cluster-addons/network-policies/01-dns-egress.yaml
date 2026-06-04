@@ -1,0 +1,29 @@
+# Every pod in `ticketing` needs DNS — to resolve service FQDNs (Postgres,
+# Redis, Service Bus), Azure AD, App Insights, etc. CoreDNS runs in
+# kube-system as the `kube-dns` service on UDP/TCP 53.
+#
+# The `rules.dns.matchPattern: "*"` is what enables Cilium to inspect DNS
+# responses and dynamically populate the IPs behind subsequent `toFQDNs`
+# rules. Without it, the AAD and App Insights policies below would fall
+# back to denying everything.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: ticketing
+spec:
+  endpointSelector: {}
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+          rules:
+            dns:
+              - matchPattern: "*"

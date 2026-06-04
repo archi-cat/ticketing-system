@@ -1,0 +1,22 @@
+# Workload Identity needs to reach Azure AD to exchange the federated token
+# for an Azure access token. Applies to every pod in `ticketing` — apps and
+# bootstrap jobs alike depend on this for their respective Azure SDKs
+# (asyncpg → Postgres, redis-py → Redis, azure-servicebus, azure-storage-blob,
+# `az login` in db-grant).
+#
+# Cilium FQDN policy with toFQDNs — requires ACNS `security.enabled` on the
+# AKS cluster (set in the AKS Terraform module).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-azure-ad-egress
+  namespace: ticketing
+spec:
+  endpointSelector: {}
+  egress:
+    - toFQDNs:
+        - matchName: "login.microsoftonline.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

@@ -64,8 +64,8 @@ node_modules/
 phase_1.jpg
 wrk_in_progress.jpg
 phase_2.jpg
-phase_3_plan.md
 kubectl.exe
 kubectl.exe.sha256
 letsencrypt-staging-account-key.yaml
 letsencrypt-production-account-key.yaml
+technical_debt.md

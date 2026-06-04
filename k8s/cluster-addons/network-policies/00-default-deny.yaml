@@ -1,0 +1,19 @@
+# Namespace-scoped default-deny for ingress AND egress on every pod in
+# `ticketing`. Standard upstream NetworkPolicy — universal, well-understood,
+# and enforced by Cilium the same way CiliumNetworkPolicy is. The
+# CiliumNetworkPolicies that follow add allows on top of this deny baseline.
+#
+# Pods in other namespaces (cert-manager, external-secrets, kube-system,
+# cert-manager-webhook-duckdns) are NOT affected by this policy — they keep
+# their default-allow behaviour. The threat model this guards against is
+# "compromised app pod laterals into the data layer or platform services."
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: ticketing
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

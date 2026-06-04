@@ -1,0 +1,29 @@
+# db-load-events specifically also needs egress to the Storage Account
+# (private endpoint, port 443) to download the JSON event file before
+# inserting into Postgres.
+#
+# Selected by Job name (the Kubernetes Job controller sets `job-name` on the
+# template) rather than by component label — the other bootstrap jobs share
+# the db-bootstrap component label but do NOT need Storage access.
+#
+# The 10.10.4.0/24:443 allow already exists for api/worker (their
+# Service Bus egress); this policy adds the same allow for db-load-events,
+# which is more permissive than strictly necessary (also reaches Redis-port
+# 443 and KV-port 443) but accepted for the same reason as the api egress:
+# AAD-required auth gates everything that matters.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: db-load-events-storage-egress
+  namespace: ticketing
+spec:
+  endpointSelector:
+    matchLabels:
+      job-name: db-load-events
+  egress:
+    - toCIDR:
+        - 10.10.4.0/24
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

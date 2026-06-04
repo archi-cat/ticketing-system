@@ -1,0 +1,39 @@
+# API needs to talk to the data layer:
+# - PostgreSQL (VNet-injected) — postgres subnet 10.10.5.0/24, port 5432
+# - Redis (private endpoint) — private_endpoints subnet 10.10.4.0/24, port 10000
+# - Service Bus (private endpoint) — private_endpoints subnet 10.10.4.0/24, port 443
+#
+# The private_endpoints subnet is shared between Redis, Service Bus, Key Vault,
+# and Storage. CIDR-level granularity means the api egress also covers KV+443
+# and Storage:443 even though the API doesn't use them today. Accepted
+# trade-off — AAD-token-required auth is what actually gates KV and Storage,
+# network reach alone doesn't grant access.
+#
+# DNS, Azure AD, and App Insights egress are covered by the namespace-wide
+# policies 01–03 — not repeated here.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: api-egress
+  namespace: ticketing
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  egress:
+    # PostgreSQL — VNet-injected in its own subnet
+    - toCIDR:
+        - 10.10.5.0/24
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
+    # Redis (10000) + Service Bus (443) — both via private endpoints
+    - toCIDR:
+        - 10.10.4.0/24
+      toPorts:
+        - ports:
+            - port: "10000"
+              protocol: TCP
+            - port: "443"
+              protocol: TCP

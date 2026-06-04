@@ -1,0 +1,25 @@
+# All three bootstrap jobs (db-grant, db-migrate, db-load-events) carry the
+# `app.kubernetes.io/component: db-bootstrap` label set by their Job specs.
+# Each needs Postgres egress for its respective operation:
+# - db-grant: GRANT statements as the elevated entra admin
+# - db-migrate: alembic upgrade head
+# - db-load-events: INSERT events
+#
+# AAD egress for token acquisition is covered by 02-azure-ad-egress (which
+# selects all pods). DNS by 01-dns-egress.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: bootstrap-postgres-egress
+  namespace: ticketing
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/component: db-bootstrap
+  egress:
+    - toCIDR:
+        - 10.10.5.0/24
+      toPorts:
+        - ports:
+            - port: "5432"
+              protocol: TCP
