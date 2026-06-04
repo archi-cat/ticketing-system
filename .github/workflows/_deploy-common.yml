@@ -135,7 +135,7 @@ jobs:
       # ── Build, scan, push the image ───────────────────────────────────────
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Acquire ACR access token
         id: acr_token
