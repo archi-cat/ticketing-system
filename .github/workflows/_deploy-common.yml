@@ -155,7 +155,7 @@ jobs:
           password: ${{ steps.acr_token.outputs.acr_token }}
 
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: app/${{ inputs.unit }}
           file: app/${{ inputs.unit }}/Dockerfile
