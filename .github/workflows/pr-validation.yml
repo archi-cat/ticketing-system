@@ -33,10 +33,10 @@ jobs:
       precommit: ${{ steps.filter.outputs.precommit }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Filter paths
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d  # v4
         id: filter
         with:
           filters: |
@@ -69,24 +69,24 @@ jobs:
 
       - name: Checkout
         if: needs.changes.outputs.precommit == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Set up Python
         if: needs.changes.outputs.precommit == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: '3.13'
 
       - name: Set up Terraform
         if: needs.changes.outputs.precommit == 'true'
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
         with:
           terraform_version: "1.9.0"
           terraform_wrapper: false
 
       - name: Run pre-commit
         if: needs.changes.outputs.precommit == 'true'
-        uses: pre-commit/action@v3.0.1
+        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
 
   # ── Python services ─────────────────────────────────────────────────────────
   python:
@@ -109,11 +109,11 @@ jobs:
 
       - name: Checkout
         if: needs.changes.outputs.python == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Install uv
         if: needs.changes.outputs.python == 'true'
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
         with:
           version: "0.5.13"
           enable-cache: true
@@ -156,11 +156,11 @@ jobs:
 
       - name: Checkout
         if: needs.changes.outputs.k8s == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Set up kubectl
         if: needs.changes.outputs.k8s == 'true'
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede  # v4
         with:
           version: "v1.32.0"
 
@@ -186,11 +186,11 @@ jobs:
 
       - name: Checkout
         if: needs.changes.outputs.terraform == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Set up Terraform
         if: needs.changes.outputs.terraform == 'true'
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
         with:
           terraform_version: "1.9.0"
           terraform_wrapper: false
@@ -245,7 +245,7 @@ jobs:
         # .trivyignore at the repo root is read automatically — the six
         # triaged suppressions (5 accepted risks + 1 documented false
         # positive) are honoured. See .trivyignore for the reasons.
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           scan-type: config
           scan-ref: terraform/

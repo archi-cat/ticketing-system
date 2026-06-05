@@ -104,8 +104,8 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 5. SHA-pin all GitHub Actions
-- [ ] Replace `@v4` / `@v3` with `@<sha>` (tag kept in a comment) across every workflow
-- [ ] Dependabot maintains the SHAs going forward
+- [x] Replace `@v4` / `@v3` with `@<sha>` (tag kept in a comment) across every workflow — 15 unique actions, 68 replacements across 10 workflow files
+- [x] Dependabot maintains the SHAs going forward — the `github-actions` ecosystem in `.github/dependabot.yml` reads the `# <tag>` comments to track upstream releases
 
 **Why:** Floating tags can be hijacked by a compromised publisher. OpenSSF / CIS baseline.
 **Effort:** small
