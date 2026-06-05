@@ -26,7 +26,7 @@ Files are numbered to make the apply order explicit (also the alphabetical order
 The default-deny uses upstream `networking.k8s.io/v1` `NetworkPolicy` because that's the universal, well-understood expression of "deny everything for these pods." The allow rules use `CiliumNetworkPolicy` because they need features upstream doesn't have:
 
 - **`toFQDNs`** — the AAD and App Insights egresses point at FQDNs with rotating IPs. CIDR-based egress would either need to track Microsoft's published IP ranges (brittle, breaks on rotations) or allow egress to the whole internet on port 443 (which gives up most of the value).
-- **`rules.dns.matchPattern`** — Cilium inspects DNS responses to populate the IPs behind subsequent `toFQDNs` matches. Without this, FQDN policies would silently deny.
+- **DNS interception for `toFQDNs`** — on ACNS-managed Cilium, the platform's own DNS proxy populates the IPs behind `toFQDNs` matches. Vanilla Cilium would need a user-defined `rules.dns.matchPattern: "*"` block on the DNS egress rule, but ACNS blocks those via its `advanced-networking-validating-policy` (two competing DNS proxies would race). So the `01-dns-egress.yaml` policy is L4-only — port-53 reachability to kube-dns — and ACNS handles the rest.
 - **`fromEntities: [host]`** — clean expression of "allow kubelet probes from the local node."
 
 Cilium enforces both policy types, so they coexist.
