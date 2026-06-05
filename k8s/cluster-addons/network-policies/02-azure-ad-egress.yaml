@@ -15,7 +15,14 @@ spec:
   endpointSelector: {}
   egress:
     - toFQDNs:
-        - matchName: "login.microsoftonline.com"
+        # Azure's own ACNS FQDN-filtering docs consistently use matchPattern
+        # rather than matchName — pattern entries are populated more reliably
+        # by the platform's DNS proxy. Wildcard covers login.microsoftonline.com
+        # (primary v2 endpoint) and any regional variants.
+        - matchPattern: "*.microsoftonline.com"
+        # Legacy v1 AAD endpoints the Azure SDK / az CLI sometimes fall back
+        # to during discovery (login.windows.net, sts.windows.net).
+        - matchPattern: "*.windows.net"
       toPorts:
         - ports:
             - port: "443"
