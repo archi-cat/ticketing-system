@@ -2,10 +2,14 @@
 # Redis, Service Bus), Azure AD, App Insights, etc. CoreDNS runs in
 # kube-system as the `kube-dns` service on UDP/TCP 53.
 #
-# The `rules.dns.matchPattern: "*"` is what enables Cilium to inspect DNS
-# responses and dynamically populate the IPs behind subsequent `toFQDNs`
-# rules. Without it, the AAD and App Insights policies below would fall
-# back to denying everything.
+# L4-only allow: port 53 reachability to kube-dns. NO `rules.dns` L7
+# inspection block — ACNS (`security.enabled = true` on the AKS cluster)
+# runs its own DNS proxy at the dataplane level to populate the IPs
+# behind subsequent `toFQDNs` rules, and explicitly blocks user-defined
+# L7 DNS rules via a ValidatingAdmissionPolicy
+# (advanced-networking-validating-policy). Two competing DNS proxies on
+# the same flow would race; ACNS wins. We just need to let traffic to
+# kube-dns through.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -24,6 +28,3 @@ spec:
               protocol: UDP
             - port: "53"
               protocol: TCP
-          rules:
-            dns:
-              - matchPattern: "*"
