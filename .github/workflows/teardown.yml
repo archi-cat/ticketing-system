@@ -1,0 +1,245 @@
+name: Teardown — destroy regional + shared infra
+
+# Manual-only workflow that tears the project down for a clean rebuild.
+# Deletes in order:
+#   1. Regional resource group (rg-ticketing-uksouth)
+#   2. AKS-managed node resource group, if it didn't auto-delete with the cluster
+#   3. Soft-deleted Key Vault(s) — purged so the same KV name can be reused
+#   4. Shared resource group (rg-ticketing-shared — ACR lives here)
+#   5. Terraform state blobs in the state storage account (optional)
+#
+# Does NOT touch:
+#   - The Terraform state resource group (separate, holds the state account)
+#   - The Service Principal / OIDC federated credentials (subscription-scope)
+#   - Any RG outside the two named above (defensive)
+#
+# Requires manual confirmation — the `confirm` input must be exactly the
+# string `destroy`. Anything else aborts before Azure login happens.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "destroy" exactly to confirm. Anything else aborts.'
+        required: true
+        type: string
+      purge_soft_deleted:
+        description: "Purge soft-deleted Key Vaults so the same name can be reused immediately"
+        required: false
+        type: boolean
+        default: true
+      delete_state_files:
+        description: "Delete the Terraform state blobs so the next deploy starts from a clean state"
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: teardown
+  cancel-in-progress: false   # never interrupt an in-flight delete
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+
+  # ── Guard: refuse to proceed without explicit confirmation ────────────────
+  guard:
+    name: Confirm intent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation token
+        run: |
+          set -uo pipefail
+          if [ "${{ github.event.inputs.confirm }}" != "destroy" ]; then
+            echo "::error::Confirmation input was '${{ github.event.inputs.confirm }}', expected 'destroy'. Aborting."
+            exit 1
+          fi
+          echo "✓ Confirmation accepted."
+
+  # ── Teardown: the actual work ─────────────────────────────────────────────
+  teardown:
+    name: Tear down
+    needs: guard
+    runs-on: ubuntu-latest
+
+    env:
+      RG_REGIONAL:    rg-ticketing-uksouth
+      RG_AKS_NODES:   rg-ticketing-uksouth-aks-nodes
+      RG_SHARED:      rg-ticketing-shared
+      LOCATION:       uksouth
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - name: Log in to Azure
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5  # v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # ── Pre-flight: show exactly what's about to disappear ──────────────────
+      - name: Show what will be destroyed
+        run: |
+          set -uo pipefail
+          for rg in "$RG_REGIONAL" "$RG_AKS_NODES" "$RG_SHARED"; do
+            echo "::group::Resources in $rg"
+            if az group show -n "$rg" >/dev/null 2>&1; then
+              az resource list -g "$rg" --query "[].{name:name, type:type}" -o table || echo "(RG empty)"
+            else
+              echo "(RG does not exist)"
+            fi
+            echo "::endgroup::"
+          done
+
+      # ── 1. Delete the regional RG ─────────────────────────────────────────
+      # AKS adds 15-25 minutes here on its own (control plane teardown,
+      # node VMSS deletion, network resource cleanup).
+      - name: Delete regional RG
+        run: |
+          set -uo pipefail
+          if az group show -n "$RG_REGIONAL" >/dev/null 2>&1; then
+            echo "==> Deleting $RG_REGIONAL (expect 15-25 minutes for AKS)..."
+            az group delete -n "$RG_REGIONAL" --yes
+            echo "==> ✓ $RG_REGIONAL deleted"
+          else
+            echo "==> $RG_REGIONAL is already absent; nothing to do"
+          fi
+
+      # ── 2. Verify regional + chase down orphans ───────────────────────────
+      - name: Verify regional RG is gone and clean up orphans
+        run: |
+          set -uo pipefail
+
+          # 2a. The regional RG itself
+          if az group show -n "$RG_REGIONAL" >/dev/null 2>&1; then
+            echo "::error::$RG_REGIONAL still exists after the delete completed"
+            exit 1
+          fi
+          echo "✓ Confirmed: $RG_REGIONAL is gone"
+
+          # 2b. The AKS-managed node RG. AKS *should* auto-delete it when the
+          #     cluster goes, but the operation occasionally leaves it behind
+          #     with stranded NICs / disks.
+          if az group show -n "$RG_AKS_NODES" >/dev/null 2>&1; then
+            echo "==> AKS node RG $RG_AKS_NODES still exists; deleting"
+            az group delete -n "$RG_AKS_NODES" --yes
+            echo "==> ✓ $RG_AKS_NODES deleted"
+          else
+            echo "✓ AKS node RG already gone (auto-deleted with the cluster)"
+          fi
+
+          # 2c. Any other RG starting with rg-ticketing-uksouth — would catch
+          #     unexpected orphan RGs from earlier failed deploys.
+          echo "::group::Other RGs matching 'rg-ticketing-uksouth*' (should be none)"
+          az group list --query "[?starts_with(name,'rg-ticketing-uksouth')].name" -o table || echo "(none)"
+          echo "::endgroup::"
+
+          # 2d. Subscription-wide leftover resources still tagged for this
+          #     environment — diagnostic only, doesn't fail the job.
+          echo "::group::Subscription-wide resources still named 'ticketing-uksouth*'"
+          az resource list --query "[?contains(name,'ticketing-uksouth')].{name:name, type:type, rg:resourceGroup}" -o table || echo "(none)"
+          echo "::endgroup::"
+
+      # ── 3. Purge soft-deleted Key Vaults ──────────────────────────────────
+      # Without purge protection (deferred per phase_3_plan.md), KVs go to
+      # soft-deleted state for 7 days, blocking re-creation with the same
+      # name. Purging unblocks the next deploy immediately.
+      - name: Purge soft-deleted Key Vaults
+        if: ${{ github.event.inputs.purge_soft_deleted == 'true' }}
+        run: |
+          set -uo pipefail
+          vaults=$(az keyvault list-deleted --query "[?contains(name,'kv-ticketing')].name" -o tsv)
+          if [ -z "$vaults" ]; then
+            echo "No soft-deleted Key Vaults matching kv-ticketing*; nothing to purge"
+          else
+            for v in $vaults; do
+              echo "==> Purging soft-deleted KV: $v"
+              az keyvault purge --name "$v" --location "$LOCATION" \
+                && echo "==> ✓ Purged $v" \
+                || echo "::warning::Failed to purge $v — may already be purged"
+            done
+          fi
+
+      # ── 4. Delete the shared RG (ACR + geo-replica) ───────────────────────
+      - name: Delete shared RG
+        run: |
+          set -uo pipefail
+          if az group show -n "$RG_SHARED" >/dev/null 2>&1; then
+            echo "==> Deleting $RG_SHARED..."
+            az group delete -n "$RG_SHARED" --yes
+            echo "==> ✓ $RG_SHARED deleted"
+          else
+            echo "==> $RG_SHARED is already absent; nothing to do"
+          fi
+
+      - name: Verify shared RG is gone
+        run: |
+          set -uo pipefail
+          if az group show -n "$RG_SHARED" >/dev/null 2>&1; then
+            echo "::error::$RG_SHARED still exists after the delete completed"
+            exit 1
+          fi
+          echo "✓ Confirmed: $RG_SHARED is gone"
+
+          echo "::group::Other RGs matching 'rg-ticketing-shared*' (should be none)"
+          az group list --query "[?starts_with(name,'rg-ticketing-shared')].name" -o table || echo "(none)"
+          echo "::endgroup::"
+
+      # ── 5. Clear the Terraform state blobs ────────────────────────────────
+      # The state storage account lives in a SEPARATE resource group (the
+      # one identified by TF_STATE_RESOURCE_GROUP, untouched by the deletes
+      # above). We just clear the two state blobs so the next deploy plans
+      # against an empty state rather than against records of resources that
+      # no longer exist.
+      - name: Delete Terraform state blobs
+        if: ${{ github.event.inputs.delete_state_files == 'true' }}
+        env:
+          STORAGE_ACCOUNT: ${{ secrets.TF_STATE_STORAGE_ACCOUNT }}
+          CONTAINER:       ${{ secrets.TF_STATE_CONTAINER }}
+        run: |
+          set -uo pipefail
+          for blob in uksouth-primary.tfstate shared-acr.tfstate; do
+            exists=$(az storage blob exists --auth-mode login \
+              --account-name "$STORAGE_ACCOUNT" \
+              --container-name "$CONTAINER" \
+              --name "$blob" \
+              --query exists -o tsv)
+            if [ "$exists" = "true" ]; then
+              echo "==> Deleting state blob: $blob"
+              az storage blob delete --auth-mode login \
+                --account-name "$STORAGE_ACCOUNT" \
+                --container-name "$CONTAINER" \
+                --name "$blob"
+              echo "==> ✓ Deleted $blob"
+            else
+              echo "==> State blob $blob doesn't exist; skipping"
+            fi
+            # Also clear the lease/lock file if present (avoids leftover locks)
+            lock="$blob.tflock"
+            lock_exists=$(az storage blob exists --auth-mode login \
+              --account-name "$STORAGE_ACCOUNT" \
+              --container-name "$CONTAINER" \
+              --name "$lock" \
+              --query exists -o tsv)
+            if [ "$lock_exists" = "true" ]; then
+              echo "==> Deleting lock blob: $lock"
+              az storage blob delete --auth-mode login \
+                --account-name "$STORAGE_ACCOUNT" \
+                --container-name "$CONTAINER" \
+                --name "$lock"
+            fi
+          done
+
+      # ── Summary ───────────────────────────────────────────────────────────
+      - name: Summary
+        run: |
+          echo "::notice::Teardown complete."
+          echo "  Regional RG:    $RG_REGIONAL — deleted"
+          echo "  AKS node RG:    $RG_AKS_NODES — deleted (auto or explicit)"
+          echo "  Shared RG:      $RG_SHARED — deleted"
+          echo "  Soft-deleted KVs: $([ "${{ github.event.inputs.purge_soft_deleted }}" = "true" ] && echo "purged" || echo "left soft-deleted (will recover within 7 days)")"
+          echo "  State blobs:    $([ "${{ github.event.inputs.delete_state_files }}" = "true" ] && echo "cleared" || echo "kept — next deploy will reconcile against potentially-stale state")"
