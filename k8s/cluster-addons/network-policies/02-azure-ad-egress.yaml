@@ -14,15 +14,33 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
+    # Primary path: FQDN-based egress.
+    # ACNS is supposed to populate the IPs behind these FQDNs transparently
+    # via its own DNS proxy (the user-defined `rules.dns` block we tried in
+    # 01-dns-egress.yaml is blocked by the platform's validating admission
+    # policy because it would conflict). In practice, the FQDN cache stays
+    # empty for db-grant traffic in this cluster — possibly an ACNS bug or
+    # configuration gap. Kept here so traffic uses this rule once FQDN
+    # tracking starts working.
     - toFQDNs:
-        # Azure's own ACNS FQDN-filtering docs consistently use matchPattern
-        # rather than matchName — pattern entries are populated more reliably
-        # by the platform's DNS proxy. Wildcard covers login.microsoftonline.com
-        # (primary v2 endpoint) and any regional variants.
         - matchPattern: "*.microsoftonline.com"
-        # Legacy v1 AAD endpoints the Azure SDK / az CLI sometimes fall back
-        # to during discovery (login.windows.net, sts.windows.net).
         - matchPattern: "*.windows.net"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Fallback: CIDR-based egress using Microsoft's published
+    # AzureActiveDirectory service-tag IP ranges. Cilium evaluates egress
+    # rules as a union, so this allows traffic when toFQDNs doesn't track
+    # the IP. Trade-off accepted: less precise (covers any Azure-AD-backed
+    # service on these ranges, not just login.microsoftonline.com) and
+    # brittle (Microsoft rotates these ranges slowly but does rotate).
+    # Sourced from the AzureActiveDirectory service tag — the canonical list
+    # is at https://www.microsoft.com/en-us/download/details.aspx?id=56519
+    # (refreshed weekly).
+    - toCIDR:
+        - 20.190.128.0/18 # AzureActiveDirectory primary
+        - 40.126.0.0/18   # AzureActiveDirectory secondary
       toPorts:
         - ports:
             - port: "443"
