@@ -62,7 +62,14 @@ Three inputs:
 
 ## What the workflow does, in order
 
-End-to-end takes ~25–40 minutes on a fully-deployed cluster (AKS teardown dominates).
+End-to-end takes ~30–50 minutes on a fully-deployed cluster (AKS teardown dominates — happens once during the graceful pass, potentially again during the backstop if anything's left).
+
+The workflow uses a **graceful-then-forceful** strategy:
+
+- **Graceful**: `terraform destroy` walks the dependency graph in reverse and explicitly deletes extension resources (diagnostic settings, role assignments, federated identity credentials) before their parents. This avoids the orphan-record quirks that `az group delete` sometimes leaves behind for diagnostic settings.
+- **Forceful**: `az group delete` runs after as a backstop, catching anything terraform missed (most often Helm releases when the cluster API became unreachable mid-destroy).
+
+Each graceful step is wrapped in `continue-on-error: true` + `timeout-minutes: <bound>` so a hung terraform run can't block the workflow — it falls through to the backstop instead.
 
 ### Phase 1 — Confirm intent (`guard` job)
 
@@ -72,14 +79,20 @@ Runs **before** Azure login. If `confirm != "destroy"`, fails immediately. This 
 
 Lists every resource currently in `rg-ticketing-uksouth`, `rg-ticketing-uksouth-aks-nodes`, and `rg-ticketing-shared`. This is the last chance to see what's about to disappear.
 
-### Phase 3 — Delete the regional RG
+### Phase 3a — Graceful: `terraform destroy` on `uksouth-primary`
 
-`az group delete -n rg-ticketing-uksouth --yes` then wait. **15–25 minutes** on a fully-deployed cluster:
+`terraform init` against the regional backend, then `terraform destroy -auto-approve` with the same `-var` inputs the apply uses. Reverse-dependency walk deletes:
 
-- AKS control plane teardown
-- VMSS node pool deletion
-- Network resource cleanup (load balancers, NICs, private endpoints)
-- Cascading deletes for everything inside the RG
+- Helm releases (cert-manager, ESO, DuckDNS webhook) — must go first while the cluster API is still reachable
+- Diagnostic settings — the resources that triggered the [orphan-import issue](#recovery--when-something-doesnt-clean-up) under the pure-az approach
+- Role assignments and federated identity credentials
+- Then AKS, then the data layer, then network
+
+**Timeout: 45 min.** `continue-on-error: true` means a partial destroy doesn't fail the workflow.
+
+### Phase 3b — Forceful: `az group delete` on regional (backstop)
+
+Checks whether `rg-ticketing-uksouth` still exists after the graceful pass. If so (typical when the helm provider couldn't reach the cluster), force-deletes the whole RG. ~5–25 minutes depending on what's left.
 
 ### Phase 4 — Verify regional + chase orphans
 
@@ -96,9 +109,15 @@ After the regional RG is gone, the workflow looks for three classes of orphan:
 
 Iterates `az keyvault list-deleted` matching `kv-ticketing*` and purges each. Without this, the same vault name is unavailable for 7 days.
 
-### Phase 6 — Delete the shared RG
+### Phase 6a — Graceful: `terraform destroy` on `shared-acr`
 
-`az group delete -n rg-ticketing-shared --yes` then wait. **2–5 minutes** typically — ACR (even with geo-replication) deletes quickly compared to AKS.
+`terraform init` against the shared backend, then `terraform destroy -auto-approve` with `subscription_id` and `acr_name` from secrets. The shared RG has fewer extension resources (just the ACR + geo-replica), so the orphan-record risk is much lower — but the graceful pass keeps the `shared-acr.tfstate` in sync with reality.
+
+**Timeout: 15 min.**
+
+### Phase 6b — Forceful: `az group delete` on shared (backstop)
+
+Checks whether `rg-ticketing-shared` still exists after the graceful pass. If so, force-deletes the RG. **2–5 minutes** typically — ACR (even with geo-replication) deletes quickly compared to AKS.
 
 ### Phase 7 — Verify shared RG is gone
 
@@ -177,6 +196,29 @@ az role assignment create \
   --assignee <sp-object-id> \
   --scope "/subscriptions/<sub-id>/resourceGroups/<state-rg>/providers/Microsoft.Storage/storageAccounts/<state-account>/blobServices/default/containers/<state-container>"
 ```
+
+### "Resource already exists, needs to be imported" on the next deploy — diagnostic settings
+
+This is the failure mode that motivated the graceful-first pattern. It can still happen if `terraform destroy` was skipped (init failed, state file already deleted) AND `az group delete` was used alone.
+
+**What's happening:** Diagnostic settings (`azurerm_monitor_diagnostic_setting`) are "extension resources" — they live as child records under their parent (KV, Postgres, Service Bus, etc.) in Azure's resource graph. When `az group delete` removes the RG, the parent goes immediately but Azure's metadata layer can keep the diagnostic setting record around for a window. If the next deploy creates a parent with the same name, the dormant record reattaches and the new diagnostic setting's create fails with "already exists."
+
+**Quick fix on a stuck redeploy:** for each diagnostic setting in the error, delete it via the CLI (parent must exist, which it does because Terraform just created it during the apply that failed):
+
+```bash
+RG=rg-ticketing-uksouth
+SUFFIX=<your NAME_SUFFIX>
+SUB=$(az account show --query id -o tsv)
+
+az monitor diagnostic-settings delete \
+  --name "diag-kv-ticketing-uks-${SUFFIX}" \
+  --resource "/subscriptions/${SUB}/resourceGroups/${RG}/providers/Microsoft.KeyVault/vaults/kv-ticketing-uks-${SUFFIX}"
+# … repeat for psql, redis (namespace + database), service bus, storage
+```
+
+Then re-run `infra-uksouth.yml` — Terraform creates the (now genuinely absent) diagnostic settings cleanly.
+
+**Permanent prevention:** the workflow's graceful pass (Phase 3a) deletes diagnostic settings via Terraform's reverse-dependency walk, which leaves no orphan records. The forceful pass (Phase 3b) only runs against whatever's left, which won't include the diagnostic-setting-on-cleanly-deleted-parent quirk.
 
 ### The next deploy still sees old resources
 
