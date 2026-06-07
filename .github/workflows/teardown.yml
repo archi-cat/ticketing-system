@@ -1,12 +1,23 @@
 name: Teardown — destroy regional + shared infra
 
 # Manual-only workflow that tears the project down for a clean rebuild.
-# Deletes in order:
-#   1. Regional resource group (rg-ticketing-uksouth)
-#   2. AKS-managed node resource group, if it didn't auto-delete with the cluster
-#   3. Soft-deleted Key Vault(s) — purged so the same KV name can be reused
-#   4. Shared resource group (rg-ticketing-shared — ACR lives here)
-#   5. Terraform state blobs in the state storage account (optional)
+#
+# Graceful-first strategy: try `terraform destroy` first (which deletes
+# extension resources like diagnostic settings in correct dependency
+# order, avoiding the orphan-record quirks that az group delete can
+# leave behind), then `az group delete` as a backstop in case anything
+# is stuck.
+#
+# Order:
+#   1. terraform destroy (uksouth-primary) — graceful, ~25 min
+#   2. az group delete on rg-ticketing-uksouth — backstop, catches
+#      anything terraform missed (Helm releases when the cluster API
+#      is unreachable, etc.)
+#   3. AKS-managed node resource group, if it didn't auto-delete
+#   4. Purge soft-deleted Key Vault(s) so the same KV name can be reused
+#   5. terraform destroy (shared-acr) — graceful, ~5 min
+#   6. az group delete on rg-ticketing-shared — backstop
+#   7. Terraform state blobs in the state storage account (optional, last)
 #
 # Does NOT touch:
 #   - The Terraform state resource group (separate, holds the state account)
@@ -70,6 +81,12 @@ jobs:
       RG_SHARED:      rg-ticketing-shared
       LOCATION:       uksouth
 
+      # OIDC auth for any terraform destroy step that goes through azurerm.
+      ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      ARM_USE_OIDC:        true
+
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -80,6 +97,12 @@ jobs:
           client-id:       ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
 
       # ── Pre-flight: show exactly what's about to disappear ──────────────────
       - name: Show what will be destroyed
@@ -95,18 +118,59 @@ jobs:
             echo "::endgroup::"
           done
 
-      # ── 1. Delete the regional RG ─────────────────────────────────────────
-      # AKS adds 15-25 minutes here on its own (control plane teardown,
-      # node VMSS deletion, network resource cleanup).
-      - name: Delete regional RG
+      # ── 1a. Graceful: terraform destroy on the regional state ─────────────
+      # terraform destroy walks the dependency graph in reverse and explicitly
+      # deletes extension resources (diagnostic settings, role assignments,
+      # etc.) before their parents. This is what avoids the orphan-diagnostic-
+      # setting issue that az group delete sometimes leaves behind.
+      #
+      # The Helm releases for cluster add-ons are destroyed first (they
+      # depend on the AKS cluster being reachable), then AKS, then the rest.
+      # If the helm provider can't reach the cluster API (cluster already
+      # half-gone, AAD token issues), the destroy may hang or partially fail
+      # — that's what the force-delete backstop in step 1b is for.
+      #
+      # `continue-on-error: true` + `timeout-minutes: 45` together mean:
+      # "give terraform up to 45 minutes to do this gracefully, then move
+      # on to the forceful path regardless of outcome."
+      - name: Terraform init (uksouth-primary state)
+        id: tf_init_regional
+        continue-on-error: true
+        working-directory: terraform/environments/uksouth-primary
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=uksouth-primary.tfstate"
+
+      - name: Terraform destroy — uksouth-primary (graceful)
+        if: steps.tf_init_regional.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 45
+        working-directory: terraform/environments/uksouth-primary
+        run: |
+          terraform destroy -auto-approve \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="name_suffix=${{ secrets.NAME_SUFFIX }}" \
+            -var="gh_actions_sp_object_id=${{ secrets.GH_ACTIONS_SP_OBJECT_ID }}" \
+            -var="postgres_entra_admin_object_id=${{ secrets.POSTGRES_ENTRA_ADMIN_OBJECT_ID }}" \
+            -var="postgres_entra_admin_name=${{ secrets.POSTGRES_ENTRA_ADMIN_NAME }}" \
+            -var="duckdns_fqdn=${{ secrets.DUCKDNS_FQDN }}" \
+            -var="alert_email_address=${{ secrets.ACME_EMAIL }}" \
+            || echo "::warning::terraform destroy did not complete cleanly; the backstop step will handle leftovers"
+
+      # ── 1b. Backstop: force-delete the regional RG ────────────────────────
+      # AKS adds 15-25 minutes if terraform destroy didn't already clean it.
+      - name: Force-delete regional RG (backstop)
         run: |
           set -uo pipefail
           if az group show -n "$RG_REGIONAL" >/dev/null 2>&1; then
-            echo "==> Deleting $RG_REGIONAL (expect 15-25 minutes for AKS)..."
+            echo "==> $RG_REGIONAL still exists; force-deleting (expect 15-25 minutes if AKS is still present)..."
             az group delete -n "$RG_REGIONAL" --yes
-            echo "==> ✓ $RG_REGIONAL deleted"
+            echo "==> ✓ $RG_REGIONAL deleted via az group delete"
           else
-            echo "==> $RG_REGIONAL is already absent; nothing to do"
+            echo "==> ✓ $RG_REGIONAL already gone (terraform destroy succeeded)"
           fi
 
       # ── 2. Verify regional + chase down orphans ───────────────────────────
@@ -164,16 +228,43 @@ jobs:
             done
           fi
 
-      # ── 4. Delete the shared RG (ACR + geo-replica) ───────────────────────
-      - name: Delete shared RG
+      # ── 4a. Graceful: terraform destroy on the shared state ───────────────
+      # The shared RG has fewer extension resources (just the ACR, plus its
+      # geo-replication target), so the orphan-record risk is much lower.
+      # We still do the graceful pass first for consistency and to keep
+      # the shared-acr.tfstate in sync.
+      - name: Terraform init (shared-acr state)
+        id: tf_init_shared
+        continue-on-error: true
+        working-directory: terraform/shared/acr
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=shared-acr.tfstate"
+
+      - name: Terraform destroy — shared-acr (graceful)
+        if: steps.tf_init_shared.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 15
+        working-directory: terraform/shared/acr
+        run: |
+          terraform destroy -auto-approve \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="acr_name=${{ secrets.ACR_NAME }}" \
+            || echo "::warning::terraform destroy (shared) did not complete cleanly; the backstop step will handle leftovers"
+
+      # ── 4b. Backstop: force-delete the shared RG ──────────────────────────
+      - name: Force-delete shared RG (backstop)
         run: |
           set -uo pipefail
           if az group show -n "$RG_SHARED" >/dev/null 2>&1; then
-            echo "==> Deleting $RG_SHARED..."
+            echo "==> $RG_SHARED still exists; force-deleting..."
             az group delete -n "$RG_SHARED" --yes
-            echo "==> ✓ $RG_SHARED deleted"
+            echo "==> ✓ $RG_SHARED deleted via az group delete"
           else
-            echo "==> $RG_SHARED is already absent; nothing to do"
+            echo "==> ✓ $RG_SHARED already gone (terraform destroy succeeded)"
           fi
 
       - name: Verify shared RG is gone
@@ -238,8 +329,10 @@ jobs:
       - name: Summary
         run: |
           echo "::notice::Teardown complete."
-          echo "  Regional RG:    $RG_REGIONAL — deleted"
-          echo "  AKS node RG:    $RG_AKS_NODES — deleted (auto or explicit)"
-          echo "  Shared RG:      $RG_SHARED — deleted"
+          echo "  Regional path:    terraform destroy (graceful) -> az group delete (backstop)"
+          echo "  Regional RG:      $RG_REGIONAL — deleted"
+          echo "  AKS node RG:      $RG_AKS_NODES — deleted (auto or explicit)"
+          echo "  Shared path:      terraform destroy (graceful) -> az group delete (backstop)"
+          echo "  Shared RG:        $RG_SHARED — deleted"
           echo "  Soft-deleted KVs: $([ "${{ github.event.inputs.purge_soft_deleted }}" = "true" ] && echo "purged" || echo "left soft-deleted (will recover within 7 days)")"
-          echo "  State blobs:    $([ "${{ github.event.inputs.delete_state_files }}" = "true" ] && echo "cleared" || echo "kept — next deploy will reconcile against potentially-stale state")"
+          echo "  State blobs:      $([ "${{ github.event.inputs.delete_state_files }}" = "true" ] && echo "cleared" || echo "kept — next deploy will reconcile against potentially-stale state")"
