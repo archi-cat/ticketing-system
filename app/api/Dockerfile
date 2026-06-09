@@ -2,7 +2,7 @@
 # ─── Stage 1: build dependencies ──────────────────────────────────────────────
 # Use the bookworm-slim variant — small, stable, security updates available.
 # Multi-stage means the final image doesn't contain uv or build artefacts.
-FROM python:3.13-slim-bookworm AS builder
+FROM python:3.13.13-slim-bookworm AS builder
 
 # Copy uv binary from its official image (multi-arch, pre-built)
 COPY --from=ghcr.io/astral-sh/uv:0.5.13 /uv /uvx /bin/
@@ -40,7 +40,7 @@ COPY alembic.ini ./alembic.ini
 COPY alembic ./alembic
 
 # ─── Stage 2: runtime ─────────────────────────────────────────────────────────
-FROM python:3.13-slim-bookworm AS runtime
+FROM python:3.13.13-slim-bookworm AS runtime
 
 # Pull in any security updates released since the base image was built.
 # Base images age — Debian publishes patches continuously; this step ensures
