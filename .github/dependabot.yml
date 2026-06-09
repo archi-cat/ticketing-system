@@ -66,6 +66,16 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    # The Python base image's "minor" version is actually a Python language
+    # version bump (3.13 -> 3.14). Those need a coordinated change to each
+    # service's pyproject.toml `requires-python` plus a fresh `uv lock`, so
+    # they shouldn't ride the weekly auto-bump train. Patch bumps within the
+    # current minor (3.13.0 -> 3.13.1) are still picked up.
+    ignore:
+      - dependency-name: "python"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
 
   # ── GitHub Actions ──────────────────────────────────────────────────────────
   # Reads every `uses: …@<version>` across every workflow in .github/workflows.
