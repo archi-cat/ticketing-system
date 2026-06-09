@@ -13,13 +13,14 @@ Files are numbered to make the apply order explicit (also the alphabetical order
 | `00-default-deny.yaml` | `NetworkPolicy` (upstream) | Denies all ingress + egress for every pod in `ticketing`. Allow rules below layer on top. |
 | `01-dns-egress.yaml` | `CiliumNetworkPolicy` | All pods → `kube-dns` (53/UDP+TCP). DNS visibility also enables Cilium's `toFQDNs` tracking for the policies that follow. |
 | `02-azure-ad-egress.yaml` | `CiliumNetworkPolicy` | All pods → `login.microsoftonline.com:443`. Workload Identity token exchange. |
-| `03-app-insights-egress.yaml` | `CiliumNetworkPolicy` | api/worker/scheduler → `*.in.applicationinsights.azure.com:443`. OpenTelemetry trace ingestion. |
+| `03-app-insights-egress.yaml` | `CiliumNetworkPolicy` | api/worker/scheduler → `*.in.applicationinsights.azure.com:443` (FQDN, kept for the day ACNS tracking works) + `world:443` workaround. Same ACNS FQDN-tracking gap as 24-bootstrap-aad — telemetry to AI was dropped without the fallback. |
 | `10-api-ingress.yaml` | `CiliumNetworkPolicy` | AGC frontend → api:8000, kubelet probes → api:8000. |
 | `11-api-egress.yaml` | `CiliumNetworkPolicy` | api → postgres (10.10.5.0/24:5432), redis+sb (10.10.4.0/24:10000+443). |
 | `12-worker-egress.yaml` | `CiliumNetworkPolicy` | Same shape as api egress — postgres + redis + service bus. |
 | `13-scheduler-egress.yaml` | `CiliumNetworkPolicy` | postgres + redis only. Scheduler doesn't touch Service Bus. |
 | `20-bootstrap-postgres-egress.yaml` | `CiliumNetworkPolicy` | All db-bootstrap pods → postgres:5432. |
 | `21-db-load-events-storage-egress.yaml` | `CiliumNetworkPolicy` | db-load-events → storage (10.10.4.0/24:443). |
+| `24-bootstrap-aad-egress-workaround.yaml` | `CiliumNetworkPolicy` | All db-bootstrap pods → `world:443`. Workaround until ACNS FQDN tracking works reliably — bootstrap pods need broader egress than apps because the `az` CLI auth flow hits endpoints whose IPs aren't all in the AzureActiveDirectory service tag. Scoped to db-bootstrap component label to keep this allow off api/worker/scheduler. |
 
 ## Why both upstream NetworkPolicy and CiliumNetworkPolicy
 

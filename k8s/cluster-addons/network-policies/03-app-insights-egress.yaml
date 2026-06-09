@@ -10,6 +10,16 @@
 #
 # Bootstrap jobs (db-grant, db-migrate, db-load-events) are excluded —
 # they're short-lived ops scripts, not instrumented.
+#
+# ACNS FQDN tracking note: as with 02-azure-ad-egress.yaml, the `toFQDNs`
+# rule below relies on ACNS's DNS proxy populating IPs. On this cluster
+# the FQDN cache stays empty in practice — see
+# 24-bootstrap-aad-egress-workaround.yaml's comment header for the full
+# context. The `toEntities: world` allow below is the same workaround
+# applied to the app pods until FQDN tracking is fixed. Trade-off accepted
+# because these are long-running pods (so broader than ideal) but App
+# Insights is the project's only observability stack, so losing telemetry
+# is unacceptable; narrowing is tracked separately.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -25,8 +35,17 @@ spec:
           - worker
           - scheduler
   egress:
+    # Primary path — kept so traffic uses this rule once FQDN tracking
+    # starts working.
     - toFQDNs:
         - matchPattern: "*.in.applicationinsights.azure.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # Workaround for broken ACNS FQDN tracking — see header comment.
+    - toEntities:
+        - world
       toPorts:
         - ports:
             - port: "443"
