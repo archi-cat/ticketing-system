@@ -11,7 +11,9 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.13 /uv /uvx /bin/
 # invalidate the dependency install layer
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    UV_PYTHON_PREFERENCE=only-system \
+    UV_PYTHON_DOWNLOADS=never
 
 WORKDIR /app
 
