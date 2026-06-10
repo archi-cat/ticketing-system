@@ -11,15 +11,19 @@
 # Bootstrap jobs (db-grant, db-migrate, db-load-events) are excluded —
 # they're short-lived ops scripts, not instrumented.
 #
-# ACNS FQDN tracking note: as with 02-azure-ad-egress.yaml, the `toFQDNs`
-# rule below relies on ACNS's DNS proxy populating IPs. On this cluster
-# the FQDN cache stays empty in practice — see
-# 24-bootstrap-aad-egress-workaround.yaml's comment header for the full
-# context. The `toEntities: world` allow below is the same workaround
-# applied to the app pods until FQDN tracking is fixed. Trade-off accepted
-# because these are long-running pods (so broader than ideal) but App
-# Insights is the project's only observability stack, so losing telemetry
-# is unacceptable; narrowing is tracked separately.
+# ACNS DNS-proxy behaviour:
+#   ACNS rejects `rules.dns.matchPattern: "*"` (the universal wildcard) via
+#   its validating admission policy, but accepts *explicit* patterns. The
+#   ACNS DNS proxy only populates the FQDN cache for patterns it's been
+#   told to inspect — earlier attempts at FQDN-only policies failed because
+#   no DNS L7 hint was given. The two rules below MUST stay in the same
+#   policy: the proxy uses the DNS rule's matchPattern to know which
+#   responses to inspect, then the toFQDNs rule references the IPs that
+#   came out of that inspection.
+#
+# 01-dns-egress.yaml's L4 DNS allow remains in play for resolving
+# non-FQDN-tracked names (cluster services, etc.). This policy adds the
+# L7 DNS inspection hint on top, scoped to the App Insights pattern only.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -35,17 +39,23 @@ spec:
           - worker
           - scheduler
   egress:
-    # Primary path — kept so traffic uses this rule once FQDN tracking
-    # starts working.
-    - toFQDNs:
-        - matchPattern: "*.in.applicationinsights.azure.com"
+    # 1. DNS query to kube-dns, with the L7 pattern hint that tells the
+    #    ACNS DNS proxy to inspect these specific queries and cache the
+    #    resolved IPs against the toFQDNs rule below.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
       toPorts:
         - ports:
-            - port: "443"
-              protocol: TCP
-    # Workaround for broken ACNS FQDN tracking — see header comment.
-    - toEntities:
-        - world
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*.in.applicationinsights.azure.com"
+    # 2. HTTPS to whichever IPs the DNS proxy resolved and cached above.
+    - toFQDNs:
+        - matchPattern: "*.in.applicationinsights.azure.com"
       toPorts:
         - ports:
             - port: "443"
