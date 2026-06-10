@@ -12,6 +12,11 @@ on:
       - '.github/workflows/deploy-scheduler.yml'
       - '.github/workflows/_deploy-common.yml'
   workflow_dispatch:
+    inputs:
+      no-cache:
+        description: "Rebuild image without layer cache — picks up OS security updates"
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-scheduler
@@ -26,6 +31,7 @@ jobs:
     with:
       unit: scheduler
       image_tag: ${{ github.sha }}
+      no_cache: ${{ inputs.no-cache == true }}
     secrets:
       AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
