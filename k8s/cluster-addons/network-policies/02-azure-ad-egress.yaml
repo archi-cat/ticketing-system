@@ -4,8 +4,34 @@
 # (asyncpg → Postgres, redis-py → Redis, azure-servicebus, azure-storage-blob,
 # `az login` in db-grant).
 #
-# Cilium FQDN policy with toFQDNs — requires ACNS `security.enabled` on the
-# AKS cluster (set in the AKS Terraform module).
+# Requires ACNS `security.advancedNetworkPolicies = "FQDN"` on the cluster
+# (set in the AKS Terraform module) — that deploys the DNS proxy which
+# inspects queries matching the `rules.dns` patterns below and populates
+# the FQDN cache the `toFQDNs` rule matches against. The two rules MUST
+# stay in the same policy. `security.enabled` alone is not sufficient —
+# see the README's "Required cluster feature: ACNS" section.
+#
+# Queries that don't match the patterns below aren't blocked — they pass
+# through 01-dns-egress.yaml's plain L4 allow uninspected (only matching
+# lookups appear in `cilium fqdn cache list`; everything else keeps
+# resolving normally).
+#
+# Pattern provenance (discovered via `cilium monitor --type drop` +
+# `cilium fqdn cache list` on the node running the pod — don't trim
+# without re-testing the db-grant Job):
+#   *.microsoftonline.com  — AAD token endpoints (all SDKs + az login)
+#   *.windows.net          — sts.windows.net et al; ALSO covers
+#                            azcliprod.blob.core.windows.net, which the
+#                            az CLI contacts on startup (version check).
+#                            This was the mystery 57.150.61.65 drop.
+#   *.microsoft.com        — az CLI auxiliary endpoints
+#   *.msauth.net           — AAD auth CDN
+#   *.msftauth.net         — AAD auth CDN
+#   management.azure.com   — ARM; az login touches it even when the
+#                            workload only needs a token. This was the
+#                            mystery 4.150.240.10 drop that kept db-grant
+#                            hanging at "Acquiring PostgreSQL Entra
+#                            access token".
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -14,33 +40,32 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    # Primary path: FQDN-based egress.
-    # ACNS is supposed to populate the IPs behind these FQDNs transparently
-    # via its own DNS proxy (the user-defined `rules.dns` block we tried in
-    # 01-dns-egress.yaml is blocked by the platform's validating admission
-    # policy because it would conflict). In practice, the FQDN cache stays
-    # empty for db-grant traffic in this cluster — possibly an ACNS bug or
-    # configuration gap. Kept here so traffic uses this rule once FQDN
-    # tracking starts working.
+    # 1. DNS to kube-dns with the L7 pattern hints that tell the ACNS DNS
+    #    proxy which lookups to inspect and cache for the toFQDNs rule below.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*.microsoftonline.com"
+              - matchPattern: "*.windows.net"
+              - matchPattern: "*.microsoft.com"
+              - matchPattern: "*.msauth.net"
+              - matchPattern: "*.msftauth.net"
+              - matchPattern: "management.azure.com"
+    # 2. HTTPS to the IPs the DNS proxy resolved and cached above.
     - toFQDNs:
         - matchPattern: "*.microsoftonline.com"
         - matchPattern: "*.windows.net"
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-    # Fallback: CIDR-based egress using Microsoft's published
-    # AzureActiveDirectory service-tag IP ranges. Cilium evaluates egress
-    # rules as a union, so this allows traffic when toFQDNs doesn't track
-    # the IP. Trade-off accepted: less precise (covers any Azure-AD-backed
-    # service on these ranges, not just login.microsoftonline.com) and
-    # brittle (Microsoft rotates these ranges slowly but does rotate).
-    # Sourced from the AzureActiveDirectory service tag — the canonical list
-    # is at https://www.microsoft.com/en-us/download/details.aspx?id=56519
-    # (refreshed weekly).
-    - toCIDR:
-        - 20.190.128.0/18 # AzureActiveDirectory primary
-        - 40.126.0.0/18   # AzureActiveDirectory secondary
+        - matchPattern: "*.microsoft.com"
+        - matchPattern: "*.msauth.net"
+        - matchPattern: "*.msftauth.net"
+        - matchPattern: "management.azure.com"
       toPorts:
         - ports:
             - port: "443"

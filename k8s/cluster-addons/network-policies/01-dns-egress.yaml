@@ -2,14 +2,21 @@
 # Redis, Service Bus), Azure AD, App Insights, etc. CoreDNS runs in
 # kube-system as the `kube-dns` service on UDP/TCP 53.
 #
-# L4-only allow: port 53 reachability to kube-dns. NO `rules.dns` L7
-# inspection block — ACNS (`security.enabled = true` on the AKS cluster)
-# runs its own DNS proxy at the dataplane level to populate the IPs
-# behind subsequent `toFQDNs` rules, and explicitly blocks user-defined
-# L7 DNS rules via a ValidatingAdmissionPolicy
-# (advanced-networking-validating-policy). Two competing DNS proxies on
-# the same flow would race; ACNS wins. We just need to let traffic to
-# kube-dns through.
+# L4-only allow: port 53 reachability to kube-dns, no L7 inspection. This
+# is the baseline that keeps every lookup working (cluster services,
+# privatelink PaaS names, anything not FQDN-filtered).
+#
+# L7 `rules.dns` blocks live in the policies that pair them with
+# `toFQDNs` rules (02-azure-ad, 03-app-insights) — the ACNS DNS proxy
+# only inspects and caches lookups matching those explicit patterns,
+# and the pattern hint must sit in the same policy as the toFQDNs rule
+# it feeds. Two constraints discovered the hard way:
+#   1. ACNS's ValidatingAdmissionPolicy (advanced-networking-validating-
+#      policy) rejects the universal wildcard `matchPattern: "*"` —
+#      explicit patterns only.
+#   2. None of it works at all unless the cluster has ACNS
+#      `security.advancedNetworkPolicies = "FQDN"` — see the README's
+#      "Required cluster feature: ACNS" section.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

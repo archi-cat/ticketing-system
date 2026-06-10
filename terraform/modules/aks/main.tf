@@ -185,9 +185,12 @@ resource "time_sleep" "ingress_profile_settle" {
 
 # ─── Advanced Container Networking Services (ACNS) ───────────────────────────
 # Enables:
-# - Cilium FQDN-based egress filtering (security.enabled) — needed by the
-#   CiliumNetworkPolicy `toFQDNs` rules in k8s/cluster-addons/network-policies/
-#   for egress to login.microsoftonline.com and *.in.applicationinsights.azure.com
+# - Cilium network policy enforcement (security.enabled) — eBPF L3/L4
+# - Cilium FQDN-based egress filtering (security.advancedNetworkPolicies =
+#   "FQDN") — deploys the DNS proxy needed by the CiliumNetworkPolicy
+#   `toFQDNs` rules in k8s/cluster-addons/network-policies/ for egress to
+#   login.microsoftonline.com and *.in.applicationinsights.azure.com.
+#   NB: security.enabled alone does NOT enable this.
 # - Hubble observability (observability.enabled) — flow visibility for
 #   debugging policy drops
 #
@@ -209,6 +212,16 @@ resource "azapi_update_resource" "acns" {
           }
           security = {
             enabled = true
+            # security.enabled alone only turns on eBPF L3/L4 policy
+            # enforcement — it does NOT deploy the DNS proxy that populates
+            # the FQDN cache behind `toFQDNs` rules. Without this setting,
+            # FQDN egress silently matches nothing, and policies carrying an
+            # explicit `rules.dns` block are rejected by the Cilium agent
+            # with "L7 policy is not supported since L7 proxy is not enabled".
+            # "FQDN" = DNS proxy + FQDN filtering (what our network policies
+            # need). "L7" would additionally enable Envoy-based HTTP/gRPC/
+            # Kafka rules — not needed, heavier footprint.
+            advancedNetworkPolicies = "FQDN"
           }
         }
       }
