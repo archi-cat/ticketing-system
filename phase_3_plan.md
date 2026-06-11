@@ -1,17 +1,3 @@
-
-Deferred-until-deploy items:
-
- - db-grant minimum privilege — inspect \df+ pgaadauth_create_principal (is it SECURITY DEFINER?), narrow the elevation if a lesser role works
- - readOnlyRootFilesystem + az login — the emptyDir/AZURE_CONFIG_DIR setup is the pre-emptive fix, but the first real run confirms it
- - The oss-rdbms token type — confirm the apt-installed Azure CLI version supports --resource-type oss-rdbms
- - Workload-identity wiring end-to-end — the pod label, the SA client-id annotation, the federated credential subject all lining up
- - The fresh-environment ordering actually holding: build images → elevate → grant → migrate → load
-
-Phase 3
-
-private aks cluster !?!
-automate the upload of the events to the regional storage account via a k8s job!?!
-
 # Phase 3 — Production Hardening
 
 Production hardening sits between Phase 2 (deployable end-to-end) and Phase 4 (cross-region DR). Goal: close the gap between "works" and "works safely under real production conditions."
@@ -27,6 +13,7 @@ Items are ranked by **risk reduction per unit of effort**. Tier 1 is the recomme
 ## Tier 1 — High impact, low/medium effort
 
 ### 🔀 1. Gateway TLS termination
+
 - [x] HTTPS listener on the Gateway
 - [x] Cert provisioned and referenced from Key Vault
 - [x] HTTP → HTTPS redirect (Gateway-level)
@@ -37,11 +24,13 @@ Items are ranked by **risk reduction per unit of effort**. Tier 1 is the recomme
 **Effort:** medium
 
 **🔀 Decision — cert authority:**
+
 - **Production:** Azure-managed cert directly on AGC, fully managed rotation. Paid (per cert / month).
 - **Learning:** Let's Encrypt via cert-manager → stored in Key Vault → referenced by AGC. Zero cost, auto-rotating, demonstrates the same Key Vault integration pattern.
 - **Recommendation:** Let's Encrypt — same architectural pattern at zero cost, slightly more moving parts (cert-manager + DNS-01 solver).
 
 **Follow-up — automate ACME account-key persistence across teardown cycles:**
+
 - [ ] One-time bootstrap: after a successful deploy, push the two account-key Secrets (`letsencrypt-staging-account-key`, `letsencrypt-production-account-key`) from `cert-manager` namespace into Key Vault
 - [ ] Add two `ExternalSecret` manifests in `k8s/cluster-addons/cert-pipeline/` (numbered to apply before the ClusterIssuers reconcile) that sync KV → K8s Secret
 - [ ] Verify: on the next teardown/rebuild, cert-manager finds the existing accounts and skips re-registration (avoids hitting Let's Encrypt's new-account rate limits and keeps account history continuous)
@@ -52,6 +41,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 2. Default-deny NetworkPolicy + per-component allow rules
+
 - [x] Namespace-level default-deny (ingress + egress)
 - [x] Allow gateway → api
 - [x] Allow api → postgres, redis, service bus, key vault
@@ -68,21 +58,23 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 🔀 3. Baseline alerts
-- [ ] Action group wired to chosen target
-- [ ] Metric alert: API 5xx rate
-- [ ] Metric alert: API p99 latency
-- [ ] Log alert: scheduler has not logged a successful sweep in N minutes
-- [ ] Metric alert: Postgres CPU
-- [ ] Metric alert: Postgres active connections
-- [ ] Metric alert: Service Bus DLQ depth
-- [ ] Metric alert: cert expiry ≤ 30 days
-- [ ] Metric alert: AKS node pool capacity
-- [ ] Workflow failure notification routes to the same action group
+
+- [x] Action group wired to chosen target
+- [x] Metric alert: API 5xx rate
+- [x] Metric alert: API p99 latency
+- [x] Log alert: scheduler has not logged a successful sweep in N minutes
+- [x] Metric alert: Postgres CPU
+- [x] Metric alert: Postgres active connections
+- [x] Metric alert: Service Bus DLQ depth
+- [x] Metric alert: cert expiry ≤ 30 days
+- [x] Metric alert: AKS node pool capacity
+- [x] Workflow failure notification routes to the same action group
 
 **Why:** Telemetry lands in Log Analytics today but nothing watches it.
 **Effort:** small-medium
 
 **🔀 Decision — paging target:**
+
 - **Production:** PagerDuty / Opsgenie / Teams via webhook + Logic App; rotations and escalation paths.
 - **Learning:** Email to a single address.
 - **Recommendation:** Email is sufficient for the project. Webhook integration would be a portfolio bonus if interesting later.
@@ -90,11 +82,12 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 4. Dependabot
-- [ ] Config: pip — api, worker, scheduler
-- [ ] Config: github-actions
-- [ ] Config: docker (api, worker, scheduler, db-grant base images)
-- [ ] Config: terraform providers
-- [ ] Updates grouped weekly, labelled `dependencies`
+
+- [x] Config: pip — api, worker, scheduler
+- [x] Config: github-actions
+- [x] Config: docker (api, worker, scheduler, db-grant base images)
+- [x] Config: terraform providers
+- [x] Updates grouped weekly, labelled `dependencies`
 
 **Why:** urllib3 CVE was caught reactively. Dependabot opens PRs proactively and keeps SHA pins (#5) fresh.
 **Effort:** small
@@ -104,6 +97,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 5. SHA-pin all GitHub Actions
+
 - [x] Replace `@v4` / `@v3` with `@<sha>` (tag kept in a comment) across every workflow — 15 unique actions, 68 replacements across 10 workflow files
 - [x] Dependabot maintains the SHAs going forward — the `github-actions` ecosystem in `.github/dependabot.yml` reads the `# <tag>` comments to track upstream releases
 
@@ -114,6 +108,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 6. Key Vault purge protection — DEFERRED
+
 - [-] DEFERRED for the duration of the deploy-tear-down loop. Revisit once the project stops tearing down regularly.
 - [ ] `purge_protection_enabled = true` in the Key Vault module
 - [ ] Remove `AVD-AZU-0016` from `.trivyignore`
@@ -127,6 +122,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ## Tier 2 — Important defenses, medium effort
 
 ### 7. Cluster-level Cosign enforcement (Kyverno)
+
 - [ ] Install Kyverno via Helm
 - [ ] ClusterPolicy: `ticketing-api` signed by `_deploy-common.yml@main`
 - [ ] ClusterPolicy: `ticketing-worker` signed by `_deploy-common.yml@main`
@@ -142,6 +138,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 8. PostgreSQL `pgaudit`
+
 - [ ] Enable `pgaudit` extension in Terraform config
 - [ ] `pgaudit.log = 'ddl, role'` (minimum) — catches schema changes and privilege changes
 - [ ] Confirm logs flow through existing diagnostic setting → Log Analytics
@@ -153,6 +150,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 9. Automated event upload K8s Job
+
 - [ ] `event-upload` Job manifest (mirrors `db-load-events` pattern)
 - [ ] `event-upload.yml` workflow (manual dispatch)
 - [ ] Reads JSON from repo checkout, uploads via Workload Identity
@@ -164,6 +162,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 10. PodDisruptionBudgets
+
 - [ ] PDB for api (`minAvailable: 1`)
 - [ ] PDB for worker (`minAvailable: 1`)
 - [ ] PDB for scheduler (`maxUnavailable: 1` — single-replica with leader election)
@@ -175,6 +174,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 11. `LimitRange` + `ResourceQuota`
+
 - [ ] `LimitRange` on `ticketing` namespace (default + max requests/limits per pod)
 - [ ] `ResourceQuota` on `ticketing` namespace (total CPU / memory ceiling)
 - [ ] Confirm existing deployments still admit under the new constraints
@@ -185,6 +185,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 12. HPA on the API
+
 - [ ] HPA: 2–5 replicas, CPU target 70%
 - [ ] Memory target (if available on this metrics-server version)
 - [ ] Scheduler explicitly NOT autoscaled (single-replica, leader election)
@@ -198,6 +199,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ## Tier 3 — Foundation work, large or with prerequisites
 
 ### 🔀 13. Private AKS cluster
+
 - [ ] `private_cluster_enabled = true`
 - [ ] Runner-access path chosen and implemented (see decision)
 - [ ] Every workflow that calls `kubectl` updated
@@ -208,6 +210,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 **Effort:** large (cascades into every kubectl-using workflow)
 
 **🔀 Decision — runner access (BIG delta):**
+
 - **Production:** Self-hosted runners inside the VNet (VM scale set or container apps). Real infra, runner lifecycle to maintain, runner image to keep patched.
 - **Learning:** `az aks command invoke` — Microsoft's CLI-proxied kubectl. No extra infra. Adds a few seconds per kubectl call, fine for our cadence.
 - **Public jumphost:** rejected — adds back a public surface.
@@ -216,6 +219,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 14. Storage account: public endpoint off
+
 - [ ] `public_network_access_enabled = false` in the storage module
 - [ ] Remove `allowed_ip_ranges` plumbing and the deployer IP detection where unused
 - [ ] Confirm db-load-events still works via the private endpoint
@@ -227,6 +231,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 15. Azure Policy / Gatekeeper add-on
+
 - [ ] Enable `azure_policy_enabled = true` on AKS
 - [ ] Assign the Kubernetes baseline initiative
 - [ ] Triage policy violations (some may fail expected workloads)
@@ -238,6 +243,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ### 16. PostgreSQL PITR restore drill
+
 - [ ] Script: restore latest backup into a throwaway server
 - [ ] Smoke check: row count + recent transaction visible + schema sanity
 - [ ] Auto-delete the restored server on completion
@@ -252,6 +258,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ## Tier 4 — Validation
 
 ### 17. Chaos drills
+
 - [ ] Pod kill (api, worker, scheduler) — confirm PDBs hold
 - [ ] Node drain — confirm pods reschedule, alerts fire as expected
 - [ ] Postgres forced HA failover — observe app behaviour through the connection blip
@@ -264,16 +271,19 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 ---
 
 ## Dependencies between items
+
 - **#14 depends on #9** — storage public can close only after the upload Job exists.
 - **#5 depends on #4** — let Dependabot maintain SHAs from the start.
 - **#13 cascades** — every `kubectl`-using workflow needs editing.
 - **#2 needs staging** — applying default-deny without per-service allow rules first breaks the cluster.
 
 ## Out of scope (Phase 4)
+
 - Second region + Front Door + active-passive failover
 - Cross-region DR automation
 - Front Door as public-facing front-end (may change the cert story for #1)
 
 ## Where to start
+
 - **Tier 1 in order** is a natural batch — independent items, low cumulative risk, good momentum.
 - If a specific concern dominates: **#3 (alerts)** for ops visibility · **#1 (TLS)** for public posture · **#13 (private cluster)** for the biggest architectural lesson.

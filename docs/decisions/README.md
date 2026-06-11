@@ -17,7 +17,7 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 ## Index
 
 | # | Title | Status |
-|---|---|---|
+| --- | --- | --- |
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted |
 | [0002](0002-use-postgresql.md) | Use PostgreSQL Flexible Server (not Azure SQL) | Accepted |
 | [0003](0003-network-design.md) | Regional VNet design (subnet-per-role, DNS in-region) | Accepted |
@@ -38,12 +38,12 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 | [0018](0018-database-bootstrap-jobs.md) | Database bootstrap via in-cluster Kubernetes Jobs | Accepted |
 | [0019](0019-db-load-events-design.md) | Event data loading via Blob Storage and a K8s Job | Accepted |
 | [0020](0020-gateway-tls-termination.md) | Gateway TLS termination — cert-manager + Let's Encrypt + DuckDNS + Gateway API | Accepted |
-
-| [0003](0003-use-fastapi.md) | Use FastAPI for the HTTP API | Accepted |
-| [0004](0004-use-sqlalchemy-async.md) | Use SQLAlchemy 2.0 async with Alembic | Accepted |
-| [0005](0005-three-service-architecture.md) | Split into three Python services | Accepted |
-| [0006](0006-service-bus-premium.md) | Use Service Bus Premium for messaging | Accepted |
-| [0007](0007-redis-distributed-locking.md) | Use Redis for distributed locking | Accepted |
-| [0008](0008-multi-region-active-passive.md) | Multi-region active-passive (not active-active) | Accepted |
-</content>
-</invoke>
+| [0021](0021-default-deny-network-policies.md) | Default-deny network policies with FQDN-scoped egress | Accepted |
+| [0022](0022-baseline-alerts.md) | Baseline alerting via Azure Monitor | Accepted |
+| [0023](0023-supply-chain-hardening.md) | Supply-chain hardening — Dependabot and SHA-pinned Actions | Accepted |
+| [0024](0024-use-fastapi.md) | Use FastAPI for the HTTP API | Accepted (retrospective) |
+| [0025](0025-use-sqlalchemy-async.md) | Use SQLAlchemy 2.0 async with Alembic | Accepted (retrospective) |
+| [0026](0026-three-service-architecture.md) | Split into three Python services | Accepted (retrospective) |
+| [0027](0027-service-bus-for-messaging.md) | Use Service Bus Premium for messaging | Accepted (retrospective) |
+| [0028](0028-redis-distributed-locking.md) | Use Redis for distributed locking | Accepted (retrospective) |
+| [0029](0029-multi-region-active-passive.md) | Multi-region active-passive (not active-active) | Accepted (retrospective) |
