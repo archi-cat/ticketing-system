@@ -21,6 +21,14 @@ permissions:
 jobs:
   terraform:
     name: Terraform — shared ACR
+    # Dependabot-triggered runs don't receive repository Actions secrets
+    # (GitHub treats them like fork PRs), so azure/login would fail with
+    # empty client-id/tenant-id. Action-bump PRs that touch this file
+    # would otherwise trigger the plan via the pull_request paths filter.
+    # Skipping is safe: the plan can't be affected by an action SHA bump,
+    # pr-validation still runs fmt+validate, and the full plan+apply runs
+    # on merge to main anyway.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     defaults:
