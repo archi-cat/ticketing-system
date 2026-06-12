@@ -30,7 +30,7 @@ The federated credential's subject claim binds it specifically to `system:servic
 
 | Resource | Purpose |
 |---|---|
-| `kubernetes_namespace.external-secrets` | Terraform-owned namespace |
+| `kubernetes_namespace_v1.external-secrets` | Terraform-owned namespace |
 | `azurerm_user_assigned_identity.this` | UAMI for the ESO controller |
 | `azurerm_federated_identity_credential.this` | Trusts the AKS OIDC issuer for the ESO ServiceAccount |
 | `azurerm_role_assignment.key_vault` | `Key Vault Secrets Officer` on the supplied Key Vault |

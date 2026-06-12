@@ -10,15 +10,20 @@ terraform {
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.30"
+      version = "~> 3.2"
     }
   }
   required_version = ">= 1.9.0"
 }
 
 # ── Namespace ─────────────────────────────────────────────────────────────────
+# kubernetes_namespace_v1 (not kubernetes_namespace): the un-suffixed resource
+# names are deprecated as of provider v3 and slated for removal in v4. The
+# rename is destroy/recreate (no `moved` support between the types), so it
+# must only ever happen while the platform is torn down — which is when this
+# migration was done.
 
-resource "kubernetes_namespace" "this" {
+resource "kubernetes_namespace_v1" "this" {
   metadata {
     name = "external-secrets"
     labels = {
@@ -47,7 +52,7 @@ resource "azurerm_federated_identity_credential" "this" {
 
   audience = ["api://AzureADTokenExchange"]
   issuer   = var.oidc_issuer_url
-  subject  = "system:serviceaccount:${kubernetes_namespace.this.metadata[0].name}:external-secrets"
+  subject  = "system:serviceaccount:${kubernetes_namespace_v1.this.metadata[0].name}:external-secrets"
 }
 
 # ── Key Vault role ────────────────────────────────────────────────────────────
@@ -70,7 +75,7 @@ resource "helm_release" "this" {
   repository = "https://charts.external-secrets.io"
   chart      = "external-secrets"
   version    = var.chart_version
-  namespace  = kubernetes_namespace.this.metadata[0].name
+  namespace  = kubernetes_namespace_v1.this.metadata[0].name
 
   # Idempotency safeguards for the teardown/rebuild loop:
   # - atomic: clean up the partial install on failure (also implies wait)

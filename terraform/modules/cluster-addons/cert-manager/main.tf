@@ -6,7 +6,7 @@ terraform {
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.30"
+      version = "~> 3.2"
     }
   }
   required_version = ">= 1.9.0"
@@ -15,8 +15,14 @@ terraform {
 # ── Namespace ─────────────────────────────────────────────────────────────────
 # Terraform owns the namespace lifecycle rather than relying on Helm's
 # create_namespace, so removing the chart cleanly removes the namespace too.
+#
+# kubernetes_namespace_v1 (not kubernetes_namespace): the un-suffixed resource
+# names are deprecated as of provider v3 and slated for removal in v4. The
+# rename is destroy/recreate (no `moved` support between the types), so it
+# must only ever happen while the platform is torn down — which is when this
+# migration was done.
 
-resource "kubernetes_namespace" "this" {
+resource "kubernetes_namespace_v1" "this" {
   metadata {
     name = "cert-manager"
     labels = {
@@ -35,7 +41,7 @@ resource "helm_release" "this" {
   repository = "https://charts.jetstack.io"
   chart      = "cert-manager"
   version    = var.chart_version
-  namespace  = kubernetes_namespace.this.metadata[0].name
+  namespace  = kubernetes_namespace_v1.this.metadata[0].name
 
   # Idempotency safeguards for the teardown/rebuild loop:
   # - atomic: clean up the partial install on failure (also implies wait)
@@ -54,7 +60,7 @@ resource "helm_release" "this" {
     },
     {
       name  = "global.leaderElection.namespace"
-      value = kubernetes_namespace.this.metadata[0].name
+      value = kubernetes_namespace_v1.this.metadata[0].name
     },
   ]
 }
