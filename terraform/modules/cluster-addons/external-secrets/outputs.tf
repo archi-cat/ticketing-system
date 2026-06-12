@@ -1,6 +1,6 @@
 output "namespace" {
   description = "Namespace where external-secrets is installed"
-  value       = kubernetes_namespace.this.metadata[0].name
+  value       = kubernetes_namespace_v1.this.metadata[0].name
 }
 
 output "uami_client_id" {

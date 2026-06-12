@@ -8,7 +8,7 @@ This module is the foundation for Gateway TLS termination. It installs the contr
 
 | Resource | Purpose |
 |---|---|
-| `kubernetes_namespace.cert-manager` | Terraform-owned namespace so removal cleans up |
+| `kubernetes_namespace_v1.cert-manager` | Terraform-owned namespace so removal cleans up |
 | `helm_release.cert-manager` (chart `cert-manager`) | Controller + cainjector + webhook + CRDs |
 
 CRDs are bundled into the chart install (`installCRDs = true`) rather than installed separately, so a chart upgrade is a single `helm_release` version bump.

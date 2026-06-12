@@ -22,7 +22,7 @@ terraform {
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.30"
+      version = "~> 3.2"
     }
   }
   required_version = ">= 1.9.0"
@@ -488,7 +488,7 @@ module "cert_manager_duckdns" {
   # resources (for the webhook's own self-signed TLS), so the cert-manager
   # CRDs must be registered AND its admission webhook must be operational
   # before this release applies. The implicit dependency via the namespace
-  # input only orders against kubernetes_namespace, not against the
+  # input only orders against kubernetes_namespace_v1, not against the
   # helm_release that installs the CRDs — hence the explicit depends_on.
   depends_on = [module.cert_manager]
 }
