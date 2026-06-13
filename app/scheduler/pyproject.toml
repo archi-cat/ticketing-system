@@ -84,4 +84,12 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = ["--strict-markers", "--strict-config", "-ra"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+    # Coverage is informational only — no --cov-fail-under gate yet. The
+    # term-missing report prints which source lines no test exercised.
+    "--cov=ticketing_scheduler",
+    "--cov-report=term-missing",
+]
