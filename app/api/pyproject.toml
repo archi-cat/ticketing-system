@@ -107,6 +107,10 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "-ra",
+    # Coverage is informational only — no --cov-fail-under gate yet. The
+    # term-missing report prints which source lines no test exercised.
+    "--cov=ticketing_api",
+    "--cov-report=term-missing",
 ]
 markers = [
     "integration: integration tests requiring docker-compose stack",
