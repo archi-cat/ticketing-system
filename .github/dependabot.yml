@@ -36,6 +36,23 @@ updates:
       prefix: "chore(deps)"
       include: "scope"
     groups:
+      # pytest core and its plugins are version-locked to each other
+      # (pytest-asyncio and pytest-cov each pin a pytest range), so they must
+      # move together. Group them across ALL update types — including majors —
+      # so Dependabot raises one coherent PR the resolver can satisfy, instead
+      # of the mutually-deadlocked single-package major PRs we hit with
+      # pytest 9.0 + pytest-asyncio 1.x (neither could merge alone). Listed
+      # before pip-minor-and-patch: Dependabot assigns each dependency to the
+      # first matching group, so the pytest family must win here regardless of
+      # the update type.
+      pytest:
+        patterns:
+          - "pytest"
+          - "pytest-*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
       pip-minor-and-patch:
         update-types:
           - "minor"
