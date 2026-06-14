@@ -23,7 +23,7 @@ dependencies = [
     "aiohttp==3.14.1",
     "urllib3>=2.7.0",
     # Redis
-    "redis[hiredis]==5.2.1",
+    "redis[hiredis]==8.0.0",
     # Observability
     # azure-monitor-opentelemetry bundles AND auto-activates fastapi
     # instrumentation, so it is NOT pinned here — it arrives transitively at
