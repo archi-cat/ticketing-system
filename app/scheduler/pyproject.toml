@@ -20,7 +20,7 @@ dependencies = [
     "redis[hiredis]==5.2.1",
 
     # Scheduling
-    "apscheduler==3.11.0",
+    "apscheduler==3.11.2",
 
     # Observability
     # sqlalchemy + redis instrumentation are not bundled or auto-activated by
