@@ -24,8 +24,8 @@ dependencies = [
 
     # Observability
     # sqlalchemy + redis instrumentation are not bundled or auto-activated by
-    # configure_azure_monitor — pinned here ready for the DB/Redis trace
-    # wiring in a follow-up PR (present but inactive until then). Both share
+    # configure_azure_monitor — pinned here and activated explicitly in
+    # observability.py via SQLAlchemyInstrumentor / RedisInstrumentor. Both share
     # the opentelemetry-instrumentation core that azure-monitor-opentelemetry
     # pins to ~=0.61b0; hence 0.61b0 + the dependabot.yml ignore that keeps
     # them from being bumped independently of azure-monitor.
