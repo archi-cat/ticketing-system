@@ -57,6 +57,16 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    # The opentelemetry-instrumentation-* packages we pin directly (sqlalchemy,
+    # redis — not bundled by azure-monitor-opentelemetry) share the
+    # opentelemetry-instrumentation core, which azure-monitor-opentelemetry
+    # pins to an exact version. Letting Dependabot bump them independently
+    # re-creates the resolution deadlock hit moving to 0.61b0 (it proposed
+    # 0.63b1 while azure-monitor required 0.61b0). They must only move when
+    # azure-monitor-opentelemetry is deliberately bumped and re-locked
+    # together, so ignore standalone bumps for them entirely.
+    ignore:
+      - dependency-name: "opentelemetry-instrumentation-*"
 
   # ── Docker — application + bootstrap base images ────────────────────────────
   # Tracks `FROM <image>:<tag>` references. Catches base-image CVE patches
