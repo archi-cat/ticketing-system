@@ -59,12 +59,18 @@ def _configure_tracing(settings: Settings) -> None:
         return
 
     from azure.monitor.opentelemetry import configure_azure_monitor
+    from opentelemetry.instrumentation.redis import RedisInstrumentor
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
     configure_azure_monitor(
         connection_string=settings.applicationinsights_connection_string.get_secret_value(),
         enable_live_metrics=False,
-        instrumentation_options={
-            "sqlalchemy": {"enabled": True},
-            "redis": {"enabled": True},
-        },
     )
+
+    # SQLAlchemy + Redis are not in configure_azure_monitor's supported set, so
+    # activate them explicitly. The global instrument() form wraps
+    # create_async_engine / patches the redis client library; configure_
+    # observability runs before the engine and Redis client are created in
+    # startup(), so the engine and client that follow are traced.
+    SQLAlchemyInstrumentor().instrument()
+    RedisInstrumentor().instrument()

@@ -29,10 +29,9 @@ dependencies = [
     # instrumentation, so it is NOT pinned here — it arrives transitively at
     # the matching core version. sqlalchemy + redis instrumentation are
     # neither bundled nor auto-activated by configure_azure_monitor (they're
-    # not in its supported-libraries list), so they stay as explicit pins.
-    # They're installed ready for the DB/Redis trace wiring in a follow-up PR
-    # (explicit SQLAlchemyInstrumentor/RedisInstrumentor calls) — until then
-    # they're present but inactive. All OTel instrumentation shares the
+    # not in its supported-libraries list), so they stay as explicit pins and
+    # are activated explicitly in observability.py via SQLAlchemyInstrumentor /
+    # RedisInstrumentor. All OTel instrumentation shares the
     # opentelemetry-instrumentation core, which azure-monitor-opentelemetry
     # pins to ~=0.61b0; hence the 0.61b0 pin and the dependabot.yml ignore
     # that keeps these from being bumped independently of azure-monitor.

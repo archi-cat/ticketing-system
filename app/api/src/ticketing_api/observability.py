@@ -91,13 +91,25 @@ def _configure_tracing(settings: Settings) -> None:
         return
 
     from azure.monitor.opentelemetry import configure_azure_monitor
+    from opentelemetry.instrumentation.redis import RedisInstrumentor
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
     configure_azure_monitor(
         connection_string=settings.applicationinsights_connection_string.get_secret_value(),
         enable_live_metrics=False,
+        # configure_azure_monitor only activates instrumentations in its own
+        # supported-libraries list (fastapi, django, flask, psycopg2, requests,
+        # urllib, urllib3). SQLAlchemy and Redis are NOT in that set — passing
+        # them here is silently ignored — so they're activated explicitly below.
         instrumentation_options={
             "fastapi": {"enabled": True},
-            "sqlalchemy": {"enabled": True},
-            "redis": {"enabled": True},
         },
     )
+
+    # SQLAlchemyInstrumentor wraps create_async_engine and RedisInstrumentor
+    # patches the redis client library, so the global instrument() form traces
+    # every engine / client created afterwards. configure_observability runs
+    # during app construction, before the engine and Redis client are created
+    # in the lifespan, so this ordering is correct.
+    SQLAlchemyInstrumentor().instrument()
+    RedisInstrumentor().instrument()

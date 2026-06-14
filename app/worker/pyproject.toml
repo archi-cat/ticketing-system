@@ -19,8 +19,8 @@ dependencies = [
 
     # Observability
     # sqlalchemy instrumentation is not bundled or auto-activated by
-    # configure_azure_monitor — pinned here ready for the DB trace wiring in
-    # a follow-up PR (present but inactive until then). Shares the
+    # configure_azure_monitor — pinned here and activated explicitly in
+    # observability.py via SQLAlchemyInstrumentor. Shares the
     # opentelemetry-instrumentation core that azure-monitor-opentelemetry pins
     # to ~=0.61b0; hence 0.61b0 + the dependabot.yml ignore that keeps it from
     # being bumped independently of azure-monitor.

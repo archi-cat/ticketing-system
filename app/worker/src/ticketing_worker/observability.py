@@ -59,11 +59,15 @@ def _configure_tracing(settings: Settings) -> None:
         return
 
     from azure.monitor.opentelemetry import configure_azure_monitor
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
     configure_azure_monitor(
         connection_string=settings.applicationinsights_connection_string.get_secret_value(),
         enable_live_metrics=False,
-        instrumentation_options={
-            "sqlalchemy": {"enabled": True},
-        },
     )
+
+    # SQLAlchemy is not in configure_azure_monitor's supported-libraries set,
+    # so activate it explicitly. The global instrument() wraps
+    # create_async_engine; configure_observability runs before the engine is
+    # created in Database.startup(), so this traces the engine that follows.
+    SQLAlchemyInstrumentor().instrument()
