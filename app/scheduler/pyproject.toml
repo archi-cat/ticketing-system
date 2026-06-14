@@ -20,7 +20,7 @@ dependencies = [
     "redis[hiredis]==8.0.0",
 
     # Scheduling
-    "apscheduler==3.11.0",
+    "apscheduler==3.11.2",
 
     # Observability
     # sqlalchemy + redis instrumentation are not bundled or auto-activated by
@@ -41,7 +41,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest==9.0.3",
+    "pytest==9.1.0",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
     "ruff==0.15.17",
