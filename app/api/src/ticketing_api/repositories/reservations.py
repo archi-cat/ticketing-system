@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ticketing_api.domain.models import Reservation, ReservationStatus
@@ -63,7 +64,7 @@ class ReservationsRepository:
             )
             .values(status=to_status.value)
         )
-        result = await self._session.execute(stmt)
+        result = cast(CursorResult[Any], await self._session.execute(stmt))
         return result.rowcount > 0
 
     async def list_expired_pending(self, limit: int = 100) -> list[Reservation]:

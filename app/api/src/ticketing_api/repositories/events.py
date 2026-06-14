@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import CursorResult, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ticketing_api.domain.models import Event, EventCreate
@@ -49,7 +50,7 @@ class EventsRepository:
             )
             .values(available_seats=EventORM.available_seats - seat_count)
         )
-        result = await self._session.execute(stmt)
+        result = cast(CursorResult[Any], await self._session.execute(stmt))
         return result.rowcount > 0
 
     async def increment_available_seats(self, event_id: UUID, seat_count: int) -> None:
@@ -97,7 +98,7 @@ class EventsRepository:
             )
             .on_conflict_do_nothing(index_elements=["id"])
         )
-        result = await self._session.execute(stmt)
+        result = cast(CursorResult[Any], await self._session.execute(stmt))
         return result.rowcount
 
 
