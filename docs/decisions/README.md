@@ -47,3 +47,4 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 | [0027](0027-service-bus-for-messaging.md) | Use Service Bus Premium for messaging | Accepted (retrospective) |
 | [0028](0028-redis-distributed-locking.md) | Use Redis for distributed locking | Accepted (retrospective) |
 | [0029](0029-multi-region-active-passive.md) | Multi-region active-passive (not active-active) | Accepted (retrospective) |
+| [0030](0030-postgres-audit-logging.md) | PostgreSQL audit logging via pgaudit (DDL + ROLE) | Accepted |
