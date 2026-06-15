@@ -85,6 +85,14 @@ echo "==> Phase 3: grant database-level permissions in '$APP_DATABASE'"
 # the named privileges". db-migrator is the role that runs alembic, so the
 # defaults must be tied FOR ROLE to it — not to whoever runs this script.
 "${PSQL_COMMON[@]}" --dbname "$APP_DATABASE" <<SQL
+-- ── Audit logging: ensure the pgaudit extension exists in this database.
+--    Requires the library to be allow-listed AND preloaded by Terraform first
+--    (azure.extensions + shared_preload_libraries, applied — with the server
+--    restart — before this Job runs). Idempotent. Session auditing is driven by
+--    the server-side pgaudit.log parameter; CREATE EXTENSION registers it here
+--    and unlocks object-level auditing if we ever need it.
+CREATE EXTENSION IF NOT EXISTS pgaudit;
+
 -- ── db-migrator: DDL + DML. CREATE on the schema is the migrator's
 --    distinguishing privilege — it is what lets alembic create tables.
 GRANT CONNECT ON DATABASE "${APP_DATABASE}" TO "${MIGRATOR_UAMI}";

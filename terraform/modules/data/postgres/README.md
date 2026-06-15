@@ -39,7 +39,7 @@ module "postgres" {
 | PostgreSQL Flexible Server | 1 | VNet-injected, AAD-only auth, public access disabled |
 | Active Directory administrator | 1 | The bootstrap Entra admin |
 | Database | 1 | The application database (default name `ticketing`) |
-| Server configurations | 2 | `require_secure_transport=ON`, `log_min_duration_statement=1000` |
+| Server configurations | 8 | TLS (`require_secure_transport`, `ssl_min_protocol_version`); logging (`log_min_duration_statement`, `log_connections`, `log_checkpoints`); audit (`azure.extensions`, `shared_preload_libraries`, `pgaudit.log`) |
 | Diagnostic setting | 1 | Streams logs and metrics to Log Analytics |
 
 ## Inputs
@@ -70,6 +70,28 @@ See `variables.tf` — each variable is documented inline.
 ```
 
 3. Pods running with the corresponding service account obtain Azure AD tokens via Workload Identity and authenticate as the UAMI's display name.
+
+## Audit logging (pgaudit)
+
+DDL and role changes are audited via the [`pgaudit`](https://www.pgaudit.org/) extension. Azure enables it in three steps, two of them in this module and one in the bootstrap Job:
+
+1. **Allow-list** — `azure.extensions = PGAUDIT`.
+2. **Preload** — `pgaudit` is appended to `shared_preload_libraries` (see `var.shared_preload_libraries`). This is a **static** parameter, so applying it **restarts the server**.
+3. **Create** — `CREATE EXTENSION IF NOT EXISTS pgaudit;` runs inside the `ticketing` database from the db-grant Job (`bootstrap/db-grant/grant.sh`), which connects as an `azure_pg_admin`.
+
+`pgaudit.log = DDL,ROLE`. `DDL` captures schema changes; `ROLE` captures `CREATE/ALTER ROLE` with **passwords redacted** — unlike `log_statement = DDL`, which would log them in clear text. Audit events are emitted to the standard Postgres log (the `PostgreSQLLogs` diagnostic category, already streamed to Log Analytics) prefixed `AUDIT:`.
+
+**Query — all audited DDL/role changes in the last 24h:**
+
+```kusto
+AzureDiagnostics
+| where Resource =~ "<server-name>" and Category == "PostgreSQLLogs"
+| where TimeGenerated > ago(1d) and Message contains "AUDIT:"
+| project TimeGenerated, Message
+| order by TimeGenerated desc
+```
+
+> **Caveat:** a Postgres **major-version upgrade** automatically drops and recreates `pgaudit` and does **not** preserve `pgaudit.log`. The next `terraform apply` re-asserts the parameter; re-run the db-grant Job if the extension needs recreating.
 
 ## Notes
 

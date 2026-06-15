@@ -134,6 +134,50 @@ resource "azurerm_postgresql_flexible_server_configuration" "log_checkpoints" {
   value     = "on"
 }
 
+# ── Audit logging (pgaudit) ───────────────────────────────────────────────────
+# pgaudit gives a DDL + role-change audit trail. Azure requires three things:
+#   1. allow-list the extension       (azure.extensions)
+#   2. preload the library            (shared_preload_libraries — needs restart)
+#   3. CREATE EXTENSION in the DB      (done by the db-grant Job, which connects
+#      as an azure_pg_admin — see bootstrap/db-grant/grant.sh)
+# Audit events go to the standard Postgres log (category PostgreSQLLogs, already
+# streamed to Log Analytics below) prefixed "AUDIT:".
+
+# Step 1 — allow-list pgaudit. This parameter is empty by default and nothing
+# else in this project uses it, so a plain set is safe (no existing list to
+# preserve). Casing follows the Azure portal convention (upper-case names).
+resource "azurerm_postgresql_flexible_server_configuration" "azure_extensions" {
+  name      = "azure.extensions"
+  server_id = azurerm_postgresql_flexible_server.main.id
+  value     = "PGAUDIT"
+}
+
+# Step 2 — preload the library. STATIC parameter: applying this restarts the
+# server (the provider waits for it to come back). Azure takes the COMPLETE
+# list, so var.shared_preload_libraries preserves the PG18 default and appends
+# pgaudit. depends_on the allow-list keeps the two server-parameter writes
+# serialised (Azure rejects concurrent parameter updates).
+resource "azurerm_postgresql_flexible_server_configuration" "shared_preload_libraries" {
+  name       = "shared_preload_libraries"
+  server_id  = azurerm_postgresql_flexible_server.main.id
+  value      = var.shared_preload_libraries
+  depends_on = [azurerm_postgresql_flexible_server_configuration.azure_extensions]
+}
+
+# Step 3 of config — what to audit. DDL captures schema changes; ROLE captures
+# CREATE/ALTER ROLE with passwords REDACTED (unlike log_statement=DDL, which
+# logs them in clear text). Azure forbids pgaudit's "-" shortcut, so classes are
+# listed explicitly. Set after the library is preloaded so the restart doesn't
+# race this write.
+# NOTE: a Postgres MAJOR-version upgrade drops & recreates pgaudit and does NOT
+# preserve this value — the next terraform apply re-asserts it.
+resource "azurerm_postgresql_flexible_server_configuration" "pgaudit_log" {
+  name       = "pgaudit.log"
+  server_id  = azurerm_postgresql_flexible_server.main.id
+  value      = "DDL,ROLE"
+  depends_on = [azurerm_postgresql_flexible_server_configuration.shared_preload_libraries]
+}
+
 # ── Diagnostic settings ───────────────────────────────────────────────────────
 # Stream PostgreSQL logs and metrics to Log Analytics for centralised query.
 

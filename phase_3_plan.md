@@ -139,10 +139,10 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 
 ### 8. PostgreSQL `pgaudit`
 
-- [ ] Enable `pgaudit` extension in Terraform config
-- [ ] `pgaudit.log = 'ddl, role'` (minimum) — catches schema changes and privilege changes
-- [ ] Confirm logs flow through existing diagnostic setting → Log Analytics
-- [ ] Document the query for "show me all DDL in the last 24h"
+- [x] Enable `pgaudit` extension in Terraform config (allow-list + preload) and `CREATE EXTENSION` in db-grant Job
+- [x] `pgaudit.log = 'DDL,ROLE'` — catches schema changes and privilege changes (ROLE redacts passwords)
+- [-] Confirm logs flow through existing diagnostic setting → Log Analytics (deploy-time check)
+- [x] Document the query for "show me all DDL in the last 24h"
 
 **Why:** Privileged DDL/DML (db-grant, db-migrator) isn't auditable today.
 **Effort:** small
