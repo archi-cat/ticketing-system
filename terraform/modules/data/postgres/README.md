@@ -93,6 +93,8 @@ AzureDiagnostics
 
 > **Caveat:** a Postgres **major-version upgrade** automatically drops and recreates `pgaudit` and does **not** preserve `pgaudit.log`. The next `terraform apply` re-asserts the parameter; re-run the db-grant Job if the extension needs recreating.
 
+See [ADR-0030](../../../docs/decisions/0030-postgres-audit-logging.md) for the full decision record (pgaudit vs `log_statement`, scope, trade-offs).
+
 ## Notes
 
 - This module uses **VNet injection**, not a Private Endpoint. PostgreSQL Flexible Server doesn't support Private Endpoint mode — it's either fully public (with firewall rules) or fully private (inside a delegated subnet).

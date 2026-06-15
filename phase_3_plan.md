@@ -143,6 +143,7 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 - [x] `pgaudit.log = 'DDL,ROLE'` — catches schema changes and privilege changes (ROLE redacts passwords)
 - [-] Confirm logs flow through existing diagnostic setting → Log Analytics (deploy-time check)
 - [x] Document the query for "show me all DDL in the last 24h"
+- [x] ADR-0030 — full decision captured ([docs/decisions/0030-postgres-audit-logging.md](docs/decisions/0030-postgres-audit-logging.md))
 
 **Why:** Privileged DDL/DML (db-grant, db-migrator) isn't auditable today.
 **Effort:** small
