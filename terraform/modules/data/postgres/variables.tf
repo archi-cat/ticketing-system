@@ -84,6 +84,24 @@ variable "database_name" {
   default     = "ticketing"
 }
 
+variable "shared_preload_libraries" {
+  description = <<-EOT
+    Complete value for the shared_preload_libraries server parameter. This is a
+    STATIC parameter — changing it restarts the server. Azure writes the whole
+    list (no append), so the value must include the version's default libraries
+    plus any extension that needs preloading. The default preserves the
+    documented PG18 default (pg_cron,pg_stat_statements) and appends pgaudit for
+    audit logging. Query Store / HA libraries (pg_qs, pgms_wait_sampling,
+    pg_availability) are managed by Azure outside this parameter and are
+    unaffected. If Azure's default for your version/SKU differs, the apply fails
+    validation loudly — capture the live value with
+    'az postgres flexible-server parameter show -n shared_preload_libraries' and
+    set it here.
+  EOT
+  type        = string
+  default     = "pg_cron,pg_stat_statements,pgaudit"
+}
+
 variable "log_analytics_workspace_id" {
   description = "Log Analytics workspace ID for diagnostic settings"
   type        = string
