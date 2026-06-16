@@ -203,6 +203,24 @@ jobs:
             kubectl apply -f "$f"
           done
 
+      # ── Post-apply: Kyverno image-signature policies (Phase 3 Tier 2 #7) ─────
+      # Kyverno itself is installed by the Terraform apply above (Helm release,
+      # atomic => webhook is live by now). These ClusterPolicy CRDs are applied
+      # here, like the cert-pipeline CRDs, because the manifest needs a value
+      # substituted at apply time — SIGNER_REPO_URL, the keyless cert identity.
+      # Scoped envsubst substitutes ONLY that token so other literals (globs,
+      # rekor URL) are left intact. Policies ship in Audit mode; see ADR-0031.
+      - name: Apply Kyverno image-signature policies
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          SIGNER_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for f in ../../../k8s/cluster-addons/kyverno-policies/*.yaml; do
+            echo "==> $(basename "$f")"
+            envsubst '${SIGNER_REPO_URL}' < "$f" | kubectl apply -f -
+          done
+
       # ── Post-apply: DuckDNS A record → Gateway's address ────────────────────
       # Reading from the Gateway's status (not from any Terraform output)
       # because the Gateway is the source of truth for where traffic actually

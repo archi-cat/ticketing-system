@@ -1,0 +1,90 @@
+# Cluster-level Cosign signature enforcement (Phase 3 Tier 2 #7).
+#
+# CI signs every image keyless (Fulcio/Rekor) and _deploy-common.yml verifies
+# the signature — but that check lives INSIDE the deploy workflow and is skipped
+# by a manual `kubectl apply` or a misconfigured workflow. This ClusterPolicy
+# moves verification into the cluster's admission path so the control can't be
+# bypassed.
+#
+# Shipped in AUDIT mode: images that fail verification are recorded in
+# PolicyReports (`kubectl get policyreport -A`), NOT rejected. Once a deploy loop
+# confirms the real signed images report `pass`, flip `failureAction: Audit` ->
+# `Enforce` (and set `mutateDigest: true`, drop `verifyDigest: false`, consider
+# `failurePolicy: Fail`). See ADR-0031.
+#
+# Scope: only our own ACR images (*/ticketing-*). Third-party images (Kyverno,
+# cert-manager, External Secrets, redis tooling, etc.) are intentionally NOT
+# required to be signed — which also keeps system namespaces unaffected.
+#
+# ${SIGNER_REPO_URL} is substituted by infra-uksouth.yml at apply time
+# (= https://github.com/<owner>/<repo>), keeping the policy fork-portable. It is
+# the only token substituted (scoped envsubst), so other literals are untouched.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signatures
+  annotations:
+    policies.kyverno.io/title: Verify ticketing image signatures (Cosign keyless)
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Requires every */ticketing-* image to carry a Cosign keyless signature
+      from the GitHub Actions workflow that builds it (GitHub OIDC issuer).
+spec:
+  webhookTimeoutSeconds: 30
+  # While in Audit, don't wedge admission if the Kyverno webhook is unreachable.
+  # Revisit (-> Fail) when moving to Enforce.
+  failurePolicy: Ignore
+  rules:
+    # ── Service images: signed by _deploy-common.yml. Covers api, worker,
+    #    scheduler — and db-migrate, which reuses the ticketing-api image. ──────
+    - name: verify-service-images
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "*/ticketing-api*"
+            - "*/ticketing-worker*"
+            - "*/ticketing-scheduler*"
+          failureAction: Audit
+          required: true
+          # Audit phase is purely observational — don't rewrite pod specs to
+          # digests yet (mutateDigest), and allow tag references (verifyDigest:
+          # false). Both flip with the Enforce promotion.
+          mutateDigest: false
+          verifyDigest: false
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subject: "${SIGNER_REPO_URL}/.github/workflows/_deploy-common.yml@refs/heads/main"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+    # ── Bootstrap images: signed by build-bootstrap-images.yml. db-grant now,
+    #    db-load-events when that image lands (already listed). ────────────────
+    - name: verify-bootstrap-images
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "*/ticketing-db-grant*"
+            - "*/ticketing-db-load-events*"
+          failureAction: Audit
+          required: true
+          mutateDigest: false
+          verifyDigest: false
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subject: "${SIGNER_REPO_URL}/.github/workflows/build-bootstrap-images.yml@refs/heads/main"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
