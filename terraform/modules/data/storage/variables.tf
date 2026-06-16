@@ -61,6 +61,16 @@ variable "blob_reader_principal_ids" {
   default     = {}
 }
 
+variable "blob_writer_principal_ids" {
+  description = <<-EOT
+    Map of logical name to principal (object) ID granted Storage Blob
+    Data Contributor (write) on the events container. Used by the
+    in-cluster event-upload Job's identity. e.g. { event-uploader = "<principal id>" }.
+  EOT
+  type        = map(string)
+  default     = {}
+}
+
 variable "log_analytics_workspace_id" {
   description = "Log Analytics workspace ID for diagnostic settings."
   type        = string

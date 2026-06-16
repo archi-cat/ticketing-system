@@ -155,13 +155,15 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 
 ### 9. Automated event upload K8s Job
 
-- [ ] `event-upload` Job manifest (mirrors `db-load-events` pattern)
-- [ ] `event-upload.yml` workflow (manual dispatch)
-- [ ] Reads JSON from repo checkout, uploads via Workload Identity
-- [ ] Runbook updated to remove the manual `az storage blob upload` step
+- [x] `event-upload` Job manifest (mirrors `db-load-events` pattern) + dedicated `event-uploader` UAMI (Storage Blob Data Contributor, least-privilege)
+- [x] `event-upload.yml` workflow (manual dispatch)
+- [x] Reads JSON from repo checkout (ConfigMap from `data/events/`), uploads via Workload Identity over the private endpoint
+- [x] Runbook updated to remove the manual `az storage blob upload` step
+- [x] ADR-0032 — full decision captured ([docs/decisions/0032-event-upload-job.md](docs/decisions/0032-event-upload-job.md))
 
 **Why:** Removes the only "human-from-laptop" step. Unblocks #14.
 **Effort:** medium
+**Status:** Shipped. #14 (close storage public endpoint) is now unblocked.
 
 ---
 

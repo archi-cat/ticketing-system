@@ -234,6 +234,16 @@ module "identity" {
       namespace       = "ticketing"
       service_account = "db-grant-service-account"
     }
+
+    # event-uploader: runs the event-upload Job only. Its ONLY privilege is
+    # Storage Blob Data Contributor on the events container (granted via the
+    # storage module's blob_writer_principal_ids) — no Postgres rights at all.
+    # Deliberately separate from db-migrator: writing event files is a distinct
+    # blast radius from changing the database schema. See ADR-0032.
+    event-uploader = {
+      namespace       = "ticketing"
+      service_account = "event-uploader-service-account"
+    }
   }
 
   tags = var.tags
@@ -423,6 +433,11 @@ module "storage" {
   # db-migrator reads event files from the events container.
   blob_reader_principal_ids = {
     db-migrator = module.identity.identity_principal_ids["db-migrator"]
+  }
+
+  # event-uploader writes event files (the in-cluster upload Job — ADR-0032).
+  blob_writer_principal_ids = {
+    event-uploader = module.identity.identity_principal_ids["event-uploader"]
   }
 
   log_analytics_workspace_id = module.observability.log_analytics_workspace_id

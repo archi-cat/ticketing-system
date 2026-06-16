@@ -287,36 +287,29 @@ The workflow is safe to re-run: it deletes the stale Job first, and
 
 ---
 
-### 2.8 Step 3 — Upload the events JSON file
+### 2.8 Step 3 — Upload the events JSON files
 
-**Dependency:** the migration Job (Step 2) must have completed successfully.
-The events table must exist before the load Job can insert into it.
+**Dependency:** none on the database — this just stages files in Blob Storage.
+(The downstream load in Step 4 needs the migration from Step 2.)
 
-The load-events Job reads its input from a JSON blob in the event-data
-storage account. Upload the file before triggering the workflow:
+Trigger the `Event Upload` workflow (`event-upload.yml`) from the GitHub
+Actions UI (`workflow_dispatch`); `image_tag` defaults to `latest`. It runs an
+in-cluster Job (the `event-uploader` Workload Identity) that uploads every
+`data/events/*.json` to the event-data storage account over the **private
+endpoint** — no laptop, no public network path.
 
-```bash
-# From the regional Terraform state
-cd terraform/environments/uksouth-primary
-STORAGE_ACCOUNT=$(terraform output -raw storage_blob_endpoint | \
-  sed 's|https://||;s|\.blob\.core\.windows\.net.*||')
-
-az storage blob upload \
-  --account-name "$STORAGE_ACCOUNT" \
-  --container-name events \
-  --name sample-events.json \
-  --file data/events/sample-events.json \
-  --auth-mode login
-```
-
-Your Entra ID identity needs `Storage Blob Data Contributor` on the events
-container (or account) to upload. The `db-migrator` UAMI only has reader
-rights.
+To change the catalogue, edit/add files under `data/events/` and re-run the
+workflow; uploads are `overwrite=True`, so it's safe to re-run.
 
 The JSON file is a top-level array. Each object must have an explicit `id`
-(UUID) so the operation is idempotent — see `data/events/sample-events.json`
+(UUID) so the downstream load is idempotent — see `data/events/sample-events.json`
 for the format and `docs/decisions/0019-db-load-events-design.md` for the
-full schema.
+full schema, and `docs/decisions/0032-event-upload-job.md` for the upload Job.
+
+> **Note:** the manual `az storage blob upload --auth-mode login` from a laptop
+> is no longer needed — it's replaced by this workflow. That removes the last
+> operator-from-laptop step and is what lets the storage account's public
+> endpoint be closed (Phase 3 Tier 3 #14).
 
 ### 2.9 Step 4 — Run the load-events workflow
 

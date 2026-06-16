@@ -44,6 +44,7 @@ dependencies = [
 
 [project.scripts]
 load-events = "ticketing_api.commands.load_events:main"
+upload-events = "ticketing_api.commands.upload_events:main"
 
 [dependency-groups]
 dev = [

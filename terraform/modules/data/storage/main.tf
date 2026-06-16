@@ -86,6 +86,18 @@ resource "azurerm_role_assignment" "blob_reader" {
   principal_id         = each.value
 }
 
+# Storage Blob Data Contributor (write) on the events container, for the
+# in-cluster event-upload Job's identity. Scoped to the container, like the
+# reader assignment above. This is what replaces the operator's laptop
+# `az storage blob upload` — see ADR-0032.
+resource "azurerm_role_assignment" "blob_writer" {
+  for_each = var.blob_writer_principal_ids
+
+  scope                = azurerm_storage_container.events.resource_manager_id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = each.value
+}
+
 # ── Diagnostics ───────────────────────────────────────────────────────────────
 resource "azurerm_monitor_diagnostic_setting" "this" {
   name                       = "diag-${var.name}"

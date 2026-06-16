@@ -1,0 +1,27 @@
+# event-upload needs egress to the Storage Account (private endpoint, port 443)
+# to upload the JSON event files. It writes over the same in-VNet private path
+# the db-load-events Job reads over.
+#
+# Selected by Job name (the Job controller sets `job-name` on the pod template)
+# rather than the shared db-bootstrap component label — the other bootstrap
+# Jobs don't need Storage access. Mirrors 21-db-load-events-storage-egress.yaml.
+#
+# 10.10.4.0/24:443 is the data-services subnet; this is more permissive than
+# strictly necessary (also reaches Redis/KV on 443) but accepted for the same
+# reason as the api egress: AAD-required auth gates what matters.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: event-upload-storage-egress
+  namespace: ticketing
+spec:
+  endpointSelector:
+    matchLabels:
+      job-name: event-upload
+  egress:
+    - toCIDR:
+        - 10.10.4.0/24
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
