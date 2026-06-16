@@ -49,3 +49,4 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 | [0029](0029-multi-region-active-passive.md) | Multi-region active-passive (not active-active) | Accepted (retrospective) |
 | [0030](0030-postgres-audit-logging.md) | PostgreSQL audit logging via pgaudit (DDL + ROLE) | Accepted |
 | [0031](0031-cluster-cosign-enforcement.md) | Cluster-level Cosign enforcement via Kyverno (Audit-first) | Accepted |
+| [0032](0032-event-upload-job.md) | In-cluster event upload via a Kubernetes Job | Accepted |

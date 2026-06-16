@@ -1,0 +1,73 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: event-upload
+  namespace: ticketing
+  labels:
+    app.kubernetes.io/part-of: ticketing-system
+    app.kubernetes.io/component: db-bootstrap
+spec:
+  # Uploads are overwrite=True (idempotent), so one retry on a transient
+  # storage error is safe.
+  backoffLimit: 1
+
+  ttlSecondsAfterFinished: 600
+  activeDeadlineSeconds: 300
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: ticketing-system
+        app.kubernetes.io/component: db-bootstrap
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: event-uploader-service-account
+      restartPolicy: Never
+
+      containers:
+        - name: event-upload
+          image: ${ACR_LOGIN_SERVER}/ticketing-api:${IMAGE_TAG}
+
+          # Override the image's uvicorn CMD with the upload-events script
+          # (a console_scripts entry point on PATH inside the venv). No
+          # Postgres access — this Job only writes blobs.
+          command: ["upload-events"]
+
+          env:
+            # Storage account + container resolved from Terraform outputs.
+            - name: EVENTS_STORAGE_ACCOUNT_URL
+              value: ${EVENTS_STORAGE_ACCOUNT_URL}
+            - name: EVENTS_CONTAINER_NAME
+              value: ${EVENTS_CONTAINER_NAME}
+            # Directory of *.json files to upload — the event-data ConfigMap
+            # (created from the repo's data/events/) is mounted here.
+            - name: EVENTS_SOURCE_DIR
+              value: /events
+
+          volumeMounts:
+            - name: event-data
+              mountPath: /events
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+
+      volumes:
+        # Populated by the workflow:
+        #   kubectl create configmap event-data --from-file=data/events/
+        - name: event-data
+          configMap:
+            name: event-data
+        - name: tmp
+          emptyDir: {}
+
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
