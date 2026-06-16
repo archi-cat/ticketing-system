@@ -450,13 +450,21 @@ resource "azurerm_role_assignment" "worker_sb_receiver" {
 }
 
 # ── Cluster add-ons ───────────────────────────────────────────────────────────
-# cert-manager and External Secrets Operator. Both installed via Terraform's
-# Helm provider rather than kubectl-apply in a workflow — keeps add-on
-# lifecycle, version pinning, and drift detection in the same state as the
-# rest of the infrastructure.
+# cert-manager, External Secrets Operator, and Kyverno. All installed via
+# Terraform's Helm provider rather than kubectl-apply in a workflow — keeps
+# add-on lifecycle, version pinning, and drift detection in the same state as
+# the rest of the infrastructure.
 
 module "cert_manager" {
   source = "../../modules/cluster-addons/cert-manager"
+}
+
+# Kyverno — cluster-level Cosign signature enforcement (Phase 3 Tier 2 #7).
+# Installs the engine + CRDs only; the image-signature ClusterPolicies live in
+# k8s/cluster-addons/kyverno-policies/ and are applied by the infra-uksouth
+# workflow's post-apply step. See ADR-0031.
+module "kyverno" {
+  source = "../../modules/cluster-addons/kyverno"
 }
 
 module "external_secrets" {

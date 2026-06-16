@@ -123,17 +123,20 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 
 ### 7. Cluster-level Cosign enforcement (Kyverno)
 
-- [ ] Install Kyverno via Helm
-- [ ] ClusterPolicy: `ticketing-api` signed by `_deploy-common.yml@main`
-- [ ] ClusterPolicy: `ticketing-worker` signed by `_deploy-common.yml@main`
-- [ ] ClusterPolicy: `ticketing-scheduler` signed by `_deploy-common.yml@main`
-- [ ] ClusterPolicy: `ticketing-db-grant` signed by `build-bootstrap-images.yml@main`
-- [ ] Negative test in CI: apply an unsigned manifest, expect rejection
-- [ ] Verify Kyverno policy reports appear in cluster events
+- [x] Install Kyverno via Helm (Terraform cluster-addon module + env wiring)
+- [x] ClusterPolicy: `ticketing-api` signed by `_deploy-common.yml@main` (consolidated service rule; covers `db-migrate`, which reuses the api image)
+- [x] ClusterPolicy: `ticketing-worker` signed by `_deploy-common.yml@main`
+- [x] ClusterPolicy: `ticketing-scheduler` signed by `_deploy-common.yml@main`
+- [x] ClusterPolicy: `ticketing-db-grant` signed by `build-bootstrap-images.yml@main` (bootstrap rule; `db-load-events` glob pre-added)
+- [x] Negative test in CI: apply an unsigned manifest, expect rejection (`kyverno-policy-test.yml` — kind e2e, policy in Enforce)
+- [-] Verify Kyverno policy reports appear (deploy-time check; shipped in **Audit** mode → `kubectl get policyreport -A`)
+- [ ] **Follow-up:** promote `failureAction: Audit` → `Enforce` after a deploy loop confirms real signed images report `pass`
+- [x] ADR-0031 — full decision captured ([docs/decisions/0031-cluster-cosign-enforcement.md](docs/decisions/0031-cluster-cosign-enforcement.md))
 
 **Why:** Today's CI verification can be bypassed by a manual `kubectl apply` or a misconfigured workflow.
 **Effort:** medium
 **Note:** Ratify is the Microsoft-supported alternative focused narrowly on supply-chain. Kyverno is preferred here because it also covers later policy needs (privileged container blocks, image registry allow-lists, etc.).
+**Status:** Shipped **Audit-first** — policy observes and reports; one follow-up PR flips it to Enforce. The kind e2e proves the Enforce behaviour on every PR.
 
 ---
 
