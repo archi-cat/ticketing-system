@@ -4,6 +4,8 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - configmap.yaml
+  - limitrange.yaml
+  - resourcequota.yaml
 
 labels:
   - includeSelectors: false

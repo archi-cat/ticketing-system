@@ -8,7 +8,9 @@ metadata:
     app.kubernetes.io/component: api
     app.kubernetes.io/part-of: ticketing-system
 spec:
-  replicas: 2
+  # replicas is intentionally omitted — the HorizontalPodAutoscaler (hpa.yaml)
+  # owns the replica count (min 2 / max 5). Leaving it out keeps `kubectl apply`
+  # from resetting the count on every deploy and fighting the HPA.
   strategy:
     type: RollingUpdate
     rollingUpdate:

@@ -1,0 +1,19 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: scheduler
+  namespace: ticketing
+  labels:
+    app.kubernetes.io/name: scheduler
+    app.kubernetes.io/component: scheduler
+    app.kubernetes.io/part-of: ticketing-system
+spec:
+  # maxUnavailable (not minAvailable) on purpose: the scheduler runs 2 replicas
+  # with leader election, so brief unavailability of one pod is tolerated (the
+  # standby takes leadership). maxUnavailable: 1 also avoids deadlocking a node
+  # drain if the deployment is ever scaled to a single replica — minAvailable:1
+  # there would block all voluntary eviction.
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scheduler

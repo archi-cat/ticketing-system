@@ -1,0 +1,17 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+  namespace: ticketing
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: ticketing-system
+spec:
+  # Keep at least one api pod serving through voluntary disruptions (node
+  # drains, AKS auto-upgrade, node patching). With 2+ replicas this lets the
+  # drain evict one pod at a time while the other keeps taking traffic.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ticketing
+  namespace: ticketing
+  labels:
+    app.kubernetes.io/part-of: ticketing-system
+spec:
+  # Namespace ceiling — a guardrail against a runaway/misconfigured pod, not a
+  # tight bin-packing budget (actual scheduling is bounded by node capacity).
+  # Sized to fit steady state + the api HPA at max (5) + a bootstrap Job or two:
+  #   requests ~0.8 cpu / ~2Gi   limits ~3.9 cpu / ~4Gi   (api@5 + worker + scheduler)
+  # Tune here if the workload mix changes. Pairs with the LimitRange above,
+  # which supplies the requests/limits this quota then requires every pod to have.
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "6"
+    limits.memory: 8Gi
+    pods: "20"
