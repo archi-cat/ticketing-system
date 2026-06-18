@@ -169,10 +169,10 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 
 ### 10. PodDisruptionBudgets
 
-- [ ] PDB for api (`minAvailable: 1`)
-- [ ] PDB for worker (`minAvailable: 1`)
-- [ ] PDB for scheduler (`maxUnavailable: 1` — single-replica with leader election)
-- [ ] Document the rollout / node-drain expectations
+- [x] PDB for api (`minAvailable: 1`)
+- [x] PDB for worker (`minAvailable: 1`)
+- [x] PDB for scheduler (`maxUnavailable: 1` — 2 replicas + leader election; maxUnavailable avoids deadlocking a drain)
+- [x] Document the rollout / node-drain expectations (ADR-0033 "Operator path")
 
 **Why:** AKS auto-upgrade or node patching can take the service fully down today.
 **Effort:** small
@@ -181,9 +181,9 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 
 ### 11. `LimitRange` + `ResourceQuota`
 
-- [ ] `LimitRange` on `ticketing` namespace (default + max requests/limits per pod)
-- [ ] `ResourceQuota` on `ticketing` namespace (total CPU / memory ceiling)
-- [ ] Confirm existing deployments still admit under the new constraints
+- [x] `LimitRange` on `ticketing` namespace (default + max/min requests/limits per container)
+- [x] `ResourceQuota` on `ticketing` namespace (total CPU / memory ceiling; guardrail, not bin-packing)
+- [x] Confirm existing deployments still admit under the new constraints (kustomize build verified; LimitRange defaults keep the resource-less bootstrap Jobs admittable)
 
 **Why:** Prevents a misconfigured pod from exhausting a node.
 **Effort:** small
@@ -192,13 +192,15 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 
 ### 12. HPA on the API
 
-- [ ] HPA: 2–5 replicas, CPU target 70%
-- [ ] Memory target (if available on this metrics-server version)
-- [ ] Scheduler explicitly NOT autoscaled (single-replica, leader election)
-- [ ] Worker: decide whether to autoscale based on queue depth (KEDA?) or leave at fixed replicas
+- [x] HPA: 2–5 replicas, CPU target 70% (`replicas` removed from the api Deployment so the HPA owns the count)
+- [x] Memory target — deliberately skipped (flaps on a stateless API; CPU-only)
+- [x] Scheduler explicitly NOT autoscaled (leader election)
+- [x] Worker: decided — fixed 2 replicas for now (CPU-HPA is the wrong signal for a queue consumer; KEDA queue-depth scaling deferred to its own item)
+- [x] ADR-0033 — full decision captured ([docs/decisions/0033-workload-resilience-resource-governance.md](docs/decisions/0033-workload-resilience-resource-governance.md))
 
 **Why:** API currently can't scale under load.
 **Effort:** small (HPA only) / medium (with KEDA for the worker)
+**Status:** #10–#12 shipped as one batch (ADR-0033). KEDA for the worker is the remaining optional follow-up.
 
 ---
 

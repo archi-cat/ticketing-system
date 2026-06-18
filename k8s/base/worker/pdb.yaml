@@ -1,0 +1,16 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker
+  namespace: ticketing
+  labels:
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: ticketing-system
+spec:
+  # Keep at least one worker consuming Service Bus messages through voluntary
+  # disruptions. With 2 replicas, a drain evicts one at a time.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker

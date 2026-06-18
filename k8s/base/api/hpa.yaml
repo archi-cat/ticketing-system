@@ -1,0 +1,28 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+  namespace: ticketing
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: ticketing-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 2
+  maxReplicas: 5
+  # CPU-only. The api is CPU-bound under request load and its containers declare
+  # cpu requests (100m), which HPA needs to compute utilization. Memory-target
+  # HPA is omitted deliberately — a stateless API's memory is flat and a memory
+  # target tends to flap. scaleDown uses the default 5-min stabilization window,
+  # which is fine here.
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

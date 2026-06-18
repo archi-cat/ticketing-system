@@ -5,6 +5,7 @@ resources:
   - serviceaccount.yaml
   - deployment.yaml
   - service.yaml
+  - pdb.yaml
 
 labels:
   - includeSelectors: false

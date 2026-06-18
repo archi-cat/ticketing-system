@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: ticketing-defaults
+  namespace: ticketing
+  labels:
+    app.kubernetes.io/part-of: ticketing-system
+spec:
+  # Per-container defaults and bounds. This is the load-bearing half of the
+  # quota pair: once the ResourceQuota below exists, EVERY pod must declare cpu
+  # and memory requests + limits or admission rejects it. The bootstrap Jobs
+  # (db-grant/migrate/load-events/event-upload) don't set resources, so these
+  # defaults are what keep them admittable. The app Deployments set their own
+  # resources explicitly and are unaffected.
+  limits:
+    - type: Container
+      # Applied when a container omits limits.
+      default:
+        cpu: 500m
+        memory: 512Mi
+      # Applied when a container omits requests.
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      # Ceiling per container — must be >= the largest limit any pod sets
+      # (api/worker: 500m / 512Mi). Catches a single mis-sized container.
+      max:
+        cpu: "1"
+        memory: 1Gi
+      # Floor per container.
+      min:
+        cpu: 10m
+        memory: 32Mi
