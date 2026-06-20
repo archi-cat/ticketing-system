@@ -35,13 +35,51 @@ resource "azurerm_managed_redis" "main" {
   tags = var.tags
 }
 
-# Entra ID access policy assignments — one per consumer UAMI.
-# This is what the API, worker, and scheduler need in order to AUTH.
-resource "azurerm_managed_redis_access_policy_assignment" "consumers" {
-  for_each = var.consumer_object_ids
-
+# Entra ID access policy assignments — one per consumer UAMI (api, worker,
+# scheduler). This is what each service needs in order to AUTH.
+#
+# Chained (not for_each) on purpose: Azure Managed Redis processes only ONE
+# database control-plane operation at a time. Creating these in parallel makes
+# the 2nd/3rd fail with 429 "Unable to update the database from its current
+# state 'Updating'". The depends_on chain forces Terraform to create them
+# strictly one after another — each finishes (DB back to 'Succeeded') before
+# the next starts — so the database never sees concurrent updates. Terraform
+# can't order for_each instances, hence the explicit resources.
+resource "azurerm_managed_redis_access_policy_assignment" "api" {
   managed_redis_id = azurerm_managed_redis.main.id
-  object_id        = each.value
+  object_id        = var.consumer_object_ids["api"]
+}
+
+resource "azurerm_managed_redis_access_policy_assignment" "worker" {
+  managed_redis_id = azurerm_managed_redis.main.id
+  object_id        = var.consumer_object_ids["worker"]
+  depends_on       = [azurerm_managed_redis_access_policy_assignment.api]
+}
+
+resource "azurerm_managed_redis_access_policy_assignment" "scheduler" {
+  managed_redis_id = azurerm_managed_redis.main.id
+  object_id        = var.consumer_object_ids["scheduler"]
+  depends_on       = [azurerm_managed_redis_access_policy_assignment.worker]
+}
+
+# Migrate the previous for_each instances to the chained resources above so the
+# transition is a state rename, not a destroy+recreate (a recreate would race
+# the destroy on the single-op database and risk the same 429). Safe no-op for
+# any instance that doesn't exist in state. These can be removed after the next
+# apply lands.
+moved {
+  from = azurerm_managed_redis_access_policy_assignment.consumers["api"]
+  to   = azurerm_managed_redis_access_policy_assignment.api
+}
+
+moved {
+  from = azurerm_managed_redis_access_policy_assignment.consumers["worker"]
+  to   = azurerm_managed_redis_access_policy_assignment.worker
+}
+
+moved {
+  from = azurerm_managed_redis_access_policy_assignment.consumers["scheduler"]
+  to   = azurerm_managed_redis_access_policy_assignment.scheduler
 }
 
 # Private endpoint — the only network path into the cache.
