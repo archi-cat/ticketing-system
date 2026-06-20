@@ -184,59 +184,53 @@ resource "time_sleep" "ingress_profile_settle" {
 }
 
 # ─── Advanced Container Networking Services (ACNS) ───────────────────────────
-# Enables:
-# - Cilium network policy enforcement (security.enabled) — eBPF L3/L4
-# - Cilium FQDN-based egress filtering (security.advancedNetworkPolicies =
-#   "FQDN") — deploys the DNS proxy needed by the CiliumNetworkPolicy
-#   `toFQDNs` rules in k8s/cluster-addons/network-policies/ for egress to
-#   login.microsoftonline.com and *.in.applicationinsights.azure.com.
-#   NB: security.enabled alone does NOT enable this.
-# - Hubble observability (observability.enabled) — flow visibility for
-#   debugging policy drops
+# Enables Hubble observability + Cilium security with advancedNetworkPolicies =
+# "FQDN" — the DNS proxy behind the CiliumNetworkPolicy `toFQDNs` rules in
+# k8s/cluster-addons/network-policies/ (egress to login.microsoftonline.com,
+# *.in.applicationinsights.azure.com, etc.). `security.enabled` alone is NOT
+# enough; without "FQDN" those policies are rejected by the Cilium agent with
+# "L7 policy is not supported since L7 proxy is not enabled".
 #
-# Not surfaced via the azurerm provider's network_profile block as of writing,
-# so we PATCH via azapi the same way we enable the AGC ingress profile above.
-# Sequential on top of the ingress_profile_settle to avoid AKSOperationPreempted.
-
-resource "azapi_update_resource" "acns" {
-  type        = "Microsoft.ContainerService/managedClusters@2025-09-02-preview"
-  resource_id = azurerm_kubernetes_cluster.main.id
-
-  body = {
-    properties = {
-      networkProfile = {
-        advancedNetworking = {
-          enabled = true
-          observability = {
-            enabled = true
-          }
-          security = {
-            enabled = true
-            # security.enabled alone only turns on eBPF L3/L4 policy
-            # enforcement — it does NOT deploy the DNS proxy that populates
-            # the FQDN cache behind `toFQDNs` rules. Without this setting,
-            # FQDN egress silently matches nothing, and policies carrying an
-            # explicit `rules.dns` block are rejected by the Cilium agent
-            # with "L7 policy is not supported since L7 proxy is not enabled".
-            # "FQDN" = DNS proxy + FQDN filtering (what our network policies
-            # need). "L7" would additionally enable Envoy-based HTTP/gRPC/
-            # Kafka rules — not needed, heavier footprint.
-            advancedNetworkPolicies = "FQDN"
-          }
-        }
-      }
-    }
-  }
+# Enabled via the az CLI, NOT an azapi PATCH like the ingress profile above —
+# and kept here so both cluster add-ons live in one module. A raw PATCH to
+# networkProfile.advancedNetworking is *accepted* by AKS but does NOT persist:
+# post-deploy observability + security both report `false` (AKS reconciles the
+# change away as the ALB-controller install from the ingress profile settles,
+# and azapi_update_resource never reads the result back, so Terraform reports a
+# success that didn't take). The ingressProfile PATCH above DOES persist, which
+# is how this was isolated to the advancedNetworking property specifically — and
+# the failure is a silent post-success revert, so depends_on/retry can't catch
+# it. The purpose-built `az aks update --enable-acns` runs the proper enablement
+# flow and AKS treats it as durable.
+#
+# triggers_replace re-runs this whenever the cluster is (re)created — every
+# deploy in the teardown/rebuild loop. The retry loop rides out the
+# AKSOperationPreempted window while the ingress operation finishes settling;
+# the command is idempotent if re-run on an already-enabled cluster. Runs in the
+# CI apply (Linux /bin/sh); az is authenticated by the workflow's azure/login.
+resource "terraform_data" "acns" {
+  triggers_replace = [azurerm_kubernetes_cluster.main.id]
 
   depends_on = [time_sleep.ingress_profile_settle]
 
-  retry = {
-    error_message_regex  = ["AKSOperationPreempted", "OperationNotAllowed"]
-    interval_seconds     = 30
-    max_interval_seconds = 300
-  }
-
-  timeouts {
-    update = "30m"
+  provisioner "local-exec" {
+    command = <<-EOT
+      attempt=1
+      while [ "$attempt" -le 10 ]; do
+        if az aks update \
+            --resource-group "${var.resource_group_name}" \
+            --name "${var.cluster_name}" \
+            --enable-acns --acns-advanced-networkpolicies FQDN \
+            --only-show-errors; then
+          echo "ACNS enabled (FQDN advanced network policies)."
+          exit 0
+        fi
+        echo "az aks update attempt $attempt failed (operation likely still in progress); retrying in 30s..."
+        attempt=$((attempt + 1))
+        sleep 30
+      done
+      echo "ERROR: failed to enable ACNS after 10 attempts." >&2
+      exit 1
+    EOT
   }
 }
