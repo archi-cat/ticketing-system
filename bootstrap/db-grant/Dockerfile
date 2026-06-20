@@ -24,6 +24,14 @@ RUN apt-get update && \
 # endpoint) would shrink the image considerably — deferred as a future
 # optimisation; for a rarely-run Job, image size is not a concern and the
 # CLI is the most readable, obviously-correct way to do the exchange.
+#
+# Security pins: the apt azure-cli package bundles its own Python runtime
+# (/opt/az) whose dependencies lag upstream CVE fixes, so we force-upgrade the
+# ones Trivy flags as fixable. Manual pins — bump or drop as advisories land
+# (Dependabot can't see these az-bundled deps):
+#   urllib3      >= 2.7.0   (earlier CVE)
+#   PyJWT        >= 2.13.0  CVE-2026-48526
+#   cryptography >= 48.0.1  GHSA-537c-gmf6-5ccf
 RUN curl -sLS https://packages.microsoft.com/keys/microsoft.asc \
         | gpg --dearmor -o /usr/share/keyrings/microsoft.gpg && \
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] \
@@ -31,7 +39,10 @@ https://packages.microsoft.com/repos/azure-cli/ bookworm main" \
         > /etc/apt/sources.list.d/azure-cli.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends azure-cli && \
-    /opt/az/bin/python3 -m pip install --upgrade "urllib3>=2.7.0,<3" && \
+    /opt/az/bin/python3 -m pip install --upgrade \
+        "urllib3>=2.7.0,<3" \
+        "PyJWT>=2.13.0,<3" \
+        "cryptography>=48.0.1,<49" && \
     rm -rf /var/lib/apt/lists/*
 
 # ── Scripts ───────────────────────────────────────────────────────────────────
