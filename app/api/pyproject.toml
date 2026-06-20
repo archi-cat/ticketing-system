@@ -6,8 +6,11 @@ requires-python = ">=3.13,<3.14"
 
 dependencies = [
     # Web framework
-    "fastapi==0.137.0",
-    "starlette>=0.49.1",
+    # starlette floored at 1.3.1 for CVE-2026-48818 + CVE-2026-54283; fastapi
+    # 0.138.0 is the first release whose starlette pin (>=0.46.0, uncapped)
+    # admits the 1.x line — 0.137.0 capped it below 1.0.
+    "fastapi==0.138.0",
+    "starlette>=1.3.1",
     "uvicorn[standard]==0.49.0",
     # Settings and validation
     "pydantic[email]==2.13.4",
@@ -22,6 +25,11 @@ dependencies = [
     "azure-servicebus==7.14.3",
     "aiohttp==3.14.1",
     "urllib3>=2.7.0",
+    # Security floors for transitive deps (via azure-identity/msal) — CVE fixes:
+    #   cryptography >= 48.0.1  GHSA-537c-gmf6-5ccf
+    #   PyJWT        >= 2.13.0  CVE-2026-48526
+    "cryptography>=48.0.1",
+    "PyJWT>=2.13.0",
     # Redis
     "redis[hiredis]==8.0.0",
     # Observability

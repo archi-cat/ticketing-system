@@ -31,6 +31,11 @@ dependencies = [
     # Tiny HTTP server for K8s health probes
     "aiohttp==3.14.1",
     "urllib3>=2.7.0",
+    # Security floors for transitive deps (via azure-identity/msal) — CVE fixes:
+    #   cryptography >= 48.0.1  GHSA-537c-gmf6-5ccf
+    #   PyJWT        >= 2.13.0  CVE-2026-48526
+    "cryptography>=48.0.1",
+    "PyJWT>=2.13.0",
 ]
 
 [dependency-groups]
