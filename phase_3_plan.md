@@ -129,8 +129,9 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 - [x] ClusterPolicy: `ticketing-scheduler` signed by `_deploy-common.yml@main`
 - [x] ClusterPolicy: `ticketing-db-grant` signed by `build-bootstrap-images.yml@main` (bootstrap rule; `db-load-events` glob pre-added)
 - [x] Negative test in CI: apply an unsigned manifest, expect rejection (`kyverno-policy-test.yml` — kind e2e, policy in Enforce)
-- [-] Verify Kyverno policy reports appear (deploy-time check; shipped in **Audit** mode → `kubectl get policyreport -A`)
-- [ ] **Follow-up:** promote `failureAction: Audit` → `Enforce` after a deploy loop confirms real signed images report `pass`
+- [x] **Private-ACR auth for Kyverno** (deploy-time finding): the verifier pulled the private ACR anonymously → `UNAUTHORIZED`, so verification failed (Audit-first prevented an outage). Fixed by setting `AZURE_CLIENT_ID` = kubelet identity client id on the Kyverno controllers (reuses its `AcrPull` via IMDS) — `kyverno` module `acr_pull_client_id`
+- [-] Verify Kyverno policy reports appear (deploy-time check; shipped in **Audit** mode → `kubectl get policyreport -n ticketing`; needs the ACR-auth fix above to report `pass`)
+- [ ] **Follow-up:** promote `failureAction: Audit` → `Enforce` after a deploy loop confirms real signed images report `pass` (now unblocked by the ACR-auth fix)
 - [x] ADR-0031 — full decision captured ([docs/decisions/0031-cluster-cosign-enforcement.md](docs/decisions/0031-cluster-cosign-enforcement.md))
 
 **Why:** Today's CI verification can be bypassed by a manual `kubectl apply` or a misconfigured workflow.
