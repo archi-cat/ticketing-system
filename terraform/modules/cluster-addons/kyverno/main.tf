@@ -72,5 +72,41 @@ resource "helm_release" "this" {
       name  = "reportsController.replicas"
       value = "1"
     },
+
+    # ── ACR auth for image verification ──────────────────────────────────────
+    # Kyverno's verifier pulls image manifests + cosign signatures from the
+    # PRIVATE ACR. The chart enables the `azure` registry credential helper by
+    # default, but on an AKS node with multiple managed identities the helper
+    # can't tell which one to use, so the probe returns no token and it falls
+    # back to an anonymous pull → ACR 401 (UNAUTHORIZED), verification fails.
+    # Setting AZURE_CLIENT_ID points DefaultAzureCredential's managed-identity
+    # path at the kubelet identity (which already holds AcrPull) over IMDS —
+    # passwordless, no new UAMI/federation. Set on the three controllers that
+    # verify images: admission (at admit-time), background + reports (for the
+    # PolicyReports).
+    {
+      name  = "admissionController.container.extraEnvVars[0].name"
+      value = "AZURE_CLIENT_ID"
+    },
+    {
+      name  = "admissionController.container.extraEnvVars[0].value"
+      value = var.acr_pull_client_id
+    },
+    {
+      name  = "backgroundController.container.extraEnvVars[0].name"
+      value = "AZURE_CLIENT_ID"
+    },
+    {
+      name  = "backgroundController.container.extraEnvVars[0].value"
+      value = var.acr_pull_client_id
+    },
+    {
+      name  = "reportsController.container.extraEnvVars[0].name"
+      value = "AZURE_CLIENT_ID"
+    },
+    {
+      name  = "reportsController.container.extraEnvVars[0].value"
+      value = var.acr_pull_client_id
+    },
   ]
 }

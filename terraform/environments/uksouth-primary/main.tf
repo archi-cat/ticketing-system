@@ -480,6 +480,11 @@ module "cert_manager" {
 # workflow's post-apply step. See ADR-0031.
 module "kyverno" {
   source = "../../modules/cluster-addons/kyverno"
+
+  # Kyverno verifies image signatures by pulling from the private ACR. Give it
+  # the kubelet identity's client id (already holds AcrPull) so its azure
+  # credential helper authenticates via IMDS — no separate identity needed.
+  acr_pull_client_id = module.aks.kubelet_identity_client_id
 }
 
 module "external_secrets" {

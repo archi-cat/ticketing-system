@@ -18,6 +18,11 @@ output "kubelet_identity_object_id" {
   value       = azurerm_kubernetes_cluster.main.kubelet_identity[0].object_id
 }
 
+output "kubelet_identity_client_id" {
+  description = "Kubelet identity client ID — used by cluster add-ons (e.g. Kyverno) to authenticate to ACR via IMDS managed identity, reusing its AcrPull grant"
+  value       = azurerm_kubernetes_cluster.main.kubelet_identity[0].client_id
+}
+
 output "cluster_identity_principal_id" {
   description = "Cluster control plane identity principal ID — used for any role assignments the cluster itself needs"
   value       = azurerm_kubernetes_cluster.main.identity[0].principal_id
