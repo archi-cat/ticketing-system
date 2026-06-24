@@ -1,17 +1,22 @@
 # ─── Storage account for event-data files ────────────────────────────────────
 # Holds the JSON event files consumed by the db-load-events bootstrap Job.
 #
-# Network model (see ADR):
-#  - A private endpoint gives the cluster a private, in-VNet path. This is
-#    how the db-load-events Job (db-migrator identity) reads the files.
-#  - The public endpoint stays enabled with an IP allow-list, for the
-#    operator upload path, while no in-cluster upload exists.
-#  - Phase 3: set public_network_access_enabled = false (allowed_ip_ranges
-#    empties) once an in-cluster upload Job replaces laptop uploads.
+# Network model (see ADR-0019, ADR-0032):
+#  - Private-endpoint only. public_network_access_enabled = false — there is
+#    no public path in or out. The cluster reaches the account via the blob
+#    private endpoint below (db-load-events read; event-upload Job write).
+#  - The operator laptop-upload path is gone: the in-cluster event-upload Job
+#    (ADR-0032) writes over the same private endpoint, so closing the public
+#    endpoint (Phase 3 #14) removed the last public surface on the data layer.
 #
-# Auth is Entra-only — shared access keys are disabled. The db-migrator
-# UAMI reads blobs via its Storage Blob Data Reader role; operators upload
-# with `az storage blob upload --auth-mode login`.
+# Terraform note: with public access off, the deployer (out-of-VNet) can't run
+# the provider's data-plane availability poll, so the env sets the provider
+# feature storage.data_plane_available = false. The account therefore declares
+# no queue_properties/static_website blocks (data-plane), and the container is
+# managed via the Resource Manager API (storage_account_id) — control-plane.
+#
+# Auth is Entra-only — shared access keys are disabled. Consuming UAMIs read/
+# write blobs via their container-scoped role assignments below.
 
 resource "azurerm_storage_account" "this" {
   name                = var.name
@@ -27,16 +32,17 @@ resource "azurerm_storage_account" "this" {
   https_traffic_only_enabled        = true
   allow_nested_items_to_be_public   = false
   shared_access_key_enabled         = false # Entra-only auth
-  public_network_access_enabled     = true  # Phase 3: flip to false
+  public_network_access_enabled     = false # Private-endpoint only (Phase 3 #14)
   infrastructure_encryption_enabled = true
 
   # ── Network rules ──────────────────────────────────────────────────────────
-  # Deny by default; admit only the operator IP allow-list. The cluster
-  # does NOT rely on these rules — it reaches the account via the private
-  # endpoint below.
+  # Defence in depth: deny by default. With public_network_access_enabled =
+  # false above, no public traffic reaches the account regardless — but keeping
+  # default_action = "Deny" means an accidental re-enable of public access
+  # still fails closed. The cluster reaches the account via the private
+  # endpoint below, not these rules.
   network_rules {
     default_action = "Deny"
-    ip_rules       = var.allowed_ip_ranges
     bypass         = ["AzureServices"]
   }
 

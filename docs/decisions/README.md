@@ -51,3 +51,4 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 | [0031](0031-cluster-cosign-enforcement.md) | Cluster-level Cosign enforcement via Kyverno (Audit-first) | Accepted |
 | [0032](0032-event-upload-job.md) | In-cluster event upload via a Kubernetes Job | Accepted |
 | [0033](0033-workload-resilience-resource-governance.md) | Workload resilience (PDBs) and resource governance (LimitRange/ResourceQuota, HPA) | Accepted |
+| [0034](0034-storage-public-endpoint-off.md) | Close the event-data storage public endpoint (data_plane_available=false) | Accepted |

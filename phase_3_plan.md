@@ -229,13 +229,16 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 
 ### 14. Storage account: public endpoint off
 
-- [ ] `public_network_access_enabled = false` in the storage module
-- [ ] Remove `allowed_ip_ranges` plumbing and the deployer IP detection where unused
-- [ ] Confirm db-load-events still works via the private endpoint
+- [x] `public_network_access_enabled = false` in the storage module
+- [x] Remove `allowed_ip_ranges` plumbing (storage module var + env wiring); deployer-IP detection (`data.http.myip`) **kept** — still used by Key Vault
+- [x] **Terraform data-plane gotcha:** with public off, the provider's blob-service availability poll hangs from the out-of-VNet deployer (azurerm #30893). Fixed with `features { storage { data_plane_available = false } }` — control-plane-only management, no in-VNet runner/azapi. Removed the now-dead deployer `Storage Blob Data Reader` grant + `time_sleep` (existed only for that poll)
+- [x] ADR-0034 — full decision + rejected alternatives (in-VNet runner, azapi, defer) captured ([docs/decisions/0034-storage-public-endpoint-off.md](docs/decisions/0034-storage-public-endpoint-off.md))
+- [ ] Deploy-time check: `terraform apply` completes without the data-plane hang; db-load-events + event-upload Job still read/write over the private endpoint; account shows `publicNetworkAccess: Disabled`
 
 **Why:** Last public-internet surface on the data layer.
 **Effort:** small
-**Depends on:** #9
+**Depends on:** #9 (done)
+**Status:** Shipped. Closing the endpoint surfaced a Terraform-access gotcha (data-plane poll) solved natively via the provider feature flag — see ADR-0034.
 
 ---
 
