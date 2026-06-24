@@ -30,7 +30,22 @@ terraform {
 
 provider "azurerm" {
   subscription_id = var.subscription_id
-  features {}
+
+  features {
+    # The event-data storage account runs private-endpoint-only
+    # (public_network_access_enabled = false — Phase 3 #14). With public
+    # access off, the provider's post-create data-plane "availability" poll of
+    # the blob service endpoint can't reach the account from the out-of-VNet
+    # deployer — it hangs ~2 min, then errors (azurerm #30893). This account
+    # uses no queue_properties/static_website blocks and its container is
+    # managed via the Resource Manager API (storage_account_id), so turning the
+    # data-plane path off lets terraform manage the fully-private account with
+    # control-plane calls only. It is the only storage account in this config.
+    storage {
+      data_plane_available = false
+    }
+  }
+
   skip_provider_registration = true
   storage_use_azuread        = true
 }
@@ -394,27 +409,13 @@ module "keyvault" {
 
 # ── Event-data storage ────────────────────────────────────────────────────────
 # Storage account holding the JSON event files the db-load-events bootstrap
-# Job loads into the database. Private endpoint for the cluster's read path;
-# public endpoint with an IP allow-list for the operator upload path while
-# no in-cluster upload Job exists (Phase 3 removes the public endpoint).
-
-# The azurerm provider (with storage_use_azuread = true) polls the blob
-# service endpoint with an AAD token after creating the storage account.
-# That check requires Storage Blob Data Reader. We grant it to the deployer
-# identity at the resource-group level so it is in place before the account
-# is created, then wait briefly for IAM propagation.
-resource "azurerm_role_assignment" "deployer_storage_blob_reader" {
-  scope                            = azurerm_resource_group.main.id
-  role_definition_name             = "Storage Blob Data Reader"
-  principal_id                     = data.azurerm_client_config.current.object_id
-  skip_service_principal_aad_check = true
-}
-
-resource "time_sleep" "deployer_storage_role_propagation" {
-  depends_on      = [azurerm_role_assignment.deployer_storage_blob_reader]
-  create_duration = "30s"
-}
-
+# Job loads into the database. Private-endpoint only — public_network_access is
+# disabled (Phase 3 #14). The cluster reads over the blob private endpoint, and
+# the in-cluster event-upload Job (ADR-0032) replaced the operator laptop
+# upload, so no public path is needed. Terraform manages the account with
+# control-plane calls only (provider features: storage.data_plane_available =
+# false), which is why the deployer no longer needs a Storage Blob Data Reader
+# grant here — the old availability poll that required it is turned off.
 module "storage" {
   source = "../../modules/data/storage"
 
@@ -424,11 +425,6 @@ module "storage" {
 
   private_endpoint_subnet_id = module.network.subnet_ids.private_endpoints
   private_dns_zone_id        = module.network.private_dns_zone_ids.blob
-
-  # Bare IP — no /32. Azure storage network rules reject a /32 suffix,
-  # which is why this does NOT reuse local.deployer_ip_cidr (that value
-  # is /32-suffixed, used by the Key Vault module which accepts it).
-  allowed_ip_ranges = [chomp(data.http.myip.response_body)]
 
   # db-migrator reads event files from the events container.
   blob_reader_principal_ids = {
@@ -443,8 +439,6 @@ module "storage" {
   log_analytics_workspace_id = module.observability.log_analytics_workspace_id
 
   tags = var.tags
-
-  depends_on = [time_sleep.deployer_storage_role_propagation]
 }
 
 # ── Service Bus role assignments ──────────────────────────────────────────────

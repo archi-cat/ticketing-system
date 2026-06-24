@@ -5,16 +5,25 @@ db-load-events bootstrap Job loads into the database.
 
 ## Network model
 
-- A **private endpoint** (blob sub-resource) gives the cluster an in-VNet
-  path. The db-load-events Job reads files this way.
-- The **public endpoint** stays enabled with an IP allow-list, for the
-  operator upload path, while no in-cluster upload Job exists.
-- **Phase 3**: set `public_network_access_enabled = false` and empty
-  `allowed_ip_ranges` once an in-cluster upload Job replaces laptop uploads.
+- **Private-endpoint only.** `public_network_access_enabled = false` — there
+  is no public path. A **private endpoint** (blob sub-resource) gives the
+  cluster the only in-VNet path: db-load-events reads and the event-upload
+  Job (ADR-0032) writes over it.
+- `network_rules` stays `default_action = "Deny"` as defence in depth, so an
+  accidental re-enable of public access still fails closed.
 
-Auth is Entra-only — `shared_access_key_enabled = false`. Consumers read
-via the `Storage Blob Data Reader` role; operators upload with
-`az storage blob upload --auth-mode login`.
+Auth is Entra-only — `shared_access_key_enabled = false`. Consumers read/write
+via container-scoped role assignments (`blob_reader_principal_ids` /
+`blob_writer_principal_ids`).
+
+> **Terraform / deployer note.** With public access off, the out-of-VNet
+> deployer cannot run the provider's data-plane availability poll, so the
+> environment sets the provider feature `storage { data_plane_available =
+> false }`. Consequently this module declares **no** `queue_properties` /
+> `static_website` blocks (both data-plane), and the container is managed via
+> the Resource Manager API (`storage_account_id`, control-plane). This is the
+> azurerm-native alternative to running Terraform inside the VNet or moving the
+> account to `azapi` — see ADR-0034.
 
 ## Usage
 
@@ -29,10 +38,12 @@ module "storage" {
   private_endpoint_subnet_id = module.network.subnet_ids.private_endpoints
   private_dns_zone_id        = module.network.private_dns_zone_ids.blob
 
-  allowed_ip_ranges = [chomp(data.http.myip.response_body)]  # no /32
-
   blob_reader_principal_ids = {
     db-migrator = module.identity.identity_principal_ids["db-migrator"]
+  }
+
+  blob_writer_principal_ids = {
+    event-uploader = module.identity.identity_principal_ids["event-uploader"]
   }
 
   log_analytics_workspace_id = module.observability.log_analytics_workspace_id
@@ -40,6 +51,10 @@ module "storage" {
   tags = var.tags
 }
 ```
+
+> Requires the environment's `azurerm` provider to set
+> `features { storage { data_plane_available = false } }` (the account is
+> public-access-off; see the Terraform note above).
 
 ## Inputs / Outputs
 

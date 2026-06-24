@@ -37,20 +37,6 @@ variable "private_dns_zone_id" {
   type        = string
 }
 
-variable "allowed_ip_ranges" {
-  description = <<-EOT
-    Public IPs/CIDRs admitted by the storage account's network rules.
-    Used for the upload path (an operator uploading event files) while
-    the public endpoint remains enabled. Phase 3 removes the public
-    endpoint entirely; this list becomes empty then.
-
-    Note: Azure storage network rules reject a bare /32 — supply single
-    IPs without a CIDR suffix, or a range of /31 or larger.
-  EOT
-  type        = list(string)
-  default     = []
-}
-
 variable "blob_reader_principal_ids" {
   description = <<-EOT
     Map of logical name to principal (object) ID granted Storage Blob
