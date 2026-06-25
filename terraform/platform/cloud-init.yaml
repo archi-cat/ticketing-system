@@ -1,0 +1,82 @@
+#cloud-config
+# Bootstraps the self-hosted runner VM: installs the deploy toolchain and the
+# GitHub Actions runner agent, but does NOT register it. Registration is done
+# out-of-band by platform.yml via `az vm run-command`, which supplies a
+# short-lived token — so no GitHub credential is ever stored on the VM.
+#
+# The two helper scripts below are invoked by run-command at (de)register time.
+
+package_update: true
+
+packages:
+  - jq
+  - unzip
+  - curl
+  - ca-certificates
+  - apt-transport-https
+  - gnupg
+  - lsb-release
+  - gettext-base   # envsubst (cert-pipeline / gateway / kyverno-policy manifests)
+  - dnsutils       # dig (DuckDNS A-record step)
+  - git            # actions/checkout
+
+write_files:
+  # Registers this VM as a repo runner. Args: <registration-token> <repo-url> [labels]
+  - path: /opt/register-runner.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      TOKEN="$1"; REPO_URL="$2"; LABELS="${3:-self-hosted,vnet,uksouth}"
+      cd /opt/actions-runner
+      # Configure as the unprivileged 'runner' user; --replace re-registers
+      # cleanly if a runner with this name already exists on the repo.
+      sudo -u runner ./config.sh \
+        --url "$REPO_URL" \
+        --token "$TOKEN" \
+        --name "$(hostname)" \
+        --labels "$LABELS" \
+        --unattended --replace
+      # Install + start as a systemd service (runs as 'runner', enabled at boot
+      # so the runner reconnects automatically after a deallocate/start cycle).
+      ./svc.sh install runner
+      ./svc.sh start
+      echo "runner registered and started"
+
+  # Deregisters this VM from the repo. Args: <remove-token>
+  - path: /opt/deregister-runner.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      TOKEN="$1"
+      cd /opt/actions-runner
+      ./svc.sh stop || true
+      ./svc.sh uninstall || true
+      sudo -u runner ./config.sh remove --token "$TOKEN" || true
+      echo "runner deregistered"
+
+runcmd:
+  # ── Azure CLI ───────────────────────────────────────────────────────────────
+  - curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+  # ── kubectl (latest stable) ─────────────────────────────────────────────────
+  - curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+  - chmod +x /usr/local/bin/kubectl
+  # ── kubelogin (pin matches infra-uksouth.yml) ───────────────────────────────
+  - curl -fsSLo /tmp/kubelogin.zip https://github.com/Azure/kubelogin/releases/download/v0.1.5/kubelogin-linux-amd64.zip
+  - unzip -o /tmp/kubelogin.zip -d /tmp/kubelogin
+  - mv /tmp/kubelogin/bin/linux_amd64/kubelogin /usr/local/bin/kubelogin
+  - chmod +x /usr/local/bin/kubelogin
+  # ── Terraform (pin matches setup-terraform across the workflows) ─────────────
+  - curl -fsSLo /tmp/terraform.zip https://releases.hashicorp.com/terraform/1.9.0/terraform_1.9.0_linux_amd64.zip
+  - unzip -o /tmp/terraform.zip -d /usr/local/bin/
+  - chmod +x /usr/local/bin/terraform
+  # ── GitHub Actions runner agent (latest; NOT registered here) ───────────────
+  - useradd -m -s /bin/bash runner || true
+  - mkdir -p /opt/actions-runner
+  - RUNNER_VERSION=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')
+  - curl -fsSL -o /tmp/runner.tar.gz "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+  - tar -xzf /tmp/runner.tar.gz -C /opt/actions-runner
+  - chown -R runner:runner /opt/actions-runner
+  - /opt/actions-runner/bin/installdependencies.sh
+  - touch /opt/.runner-bootstrap-complete

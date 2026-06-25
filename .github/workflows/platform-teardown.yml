@@ -1,0 +1,128 @@
+name: Platform — teardown (destroy hub + runner)
+
+# Deliberately tears down the durable platform layer (hub VNet + self-hosted
+# runner). NOT part of the regional teardown.yml loop — run this only when you
+# want to remove the runner itself (e.g. a clean rebuild, or to stop paying for
+# the disk). The regional loop leaves the platform untouched.
+#
+# Order: deregister the runner from the repo (server-side, so it doesn't matter
+# whether the VM is running or deallocated) -> terraform destroy -> az group
+# delete backstop.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "destroy" exactly to confirm. Anything else aborts.'
+        required: true
+        type: string
+
+concurrency:
+  group: platform-teardown
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  guard:
+    name: Confirm intent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation token
+        run: |
+          set -uo pipefail
+          if [ "${{ github.event.inputs.confirm }}" != "destroy" ]; then
+            echo "::error::Confirmation input was '${{ github.event.inputs.confirm }}', expected 'destroy'. Aborting."
+            exit 1
+          fi
+          echo "✓ Confirmation accepted."
+
+  teardown:
+    name: Tear down platform
+    needs: guard
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform/platform
+
+    env:
+      RG_PLATFORM:         rg-ticketing-platform
+      ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      ARM_USE_OIDC:        true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Log in to Azure
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id:      ${{ secrets.RUNNER_APP_ID }}
+          private-key: ${{ secrets.RUNNER_APP_PRIVATE_KEY }}
+
+      # Deregister server-side by name — works whether the VM is running or
+      # deallocated, and removes the offline entry from the runners list.
+      - name: Deregister the runner
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -uo pipefail
+          RUNNER_ID=$(gh api "/repos/${{ github.repository }}/actions/runners" \
+            --jq '.runners[] | select(.name=="vm-ticketing-runner") | .id')
+          if [ -n "${RUNNER_ID:-}" ]; then
+            gh api --method DELETE "/repos/${{ github.repository }}/actions/runners/${RUNNER_ID}"
+            echo "✓ deregistered runner id ${RUNNER_ID}"
+          else
+            echo "no registered runner named vm-ticketing-runner; nothing to deregister"
+          fi
+
+      - name: Terraform init
+        continue-on-error: true
+        id: tf_init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=platform.tfstate"
+
+      - name: Terraform destroy (graceful)
+        if: steps.tf_init.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          terraform destroy -auto-approve \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="admin_ssh_public_key=${{ secrets.RUNNER_SSH_PUBLIC_KEY }}" \
+            || echo "::warning::terraform destroy did not complete cleanly; the backstop will handle leftovers"
+
+      - name: Force-delete platform RG (backstop)
+        run: |
+          set -uo pipefail
+          if az group show -n "$RG_PLATFORM" >/dev/null 2>&1; then
+            echo "==> $RG_PLATFORM still exists; force-deleting..."
+            az group delete -n "$RG_PLATFORM" --yes
+            echo "==> ✓ $RG_PLATFORM deleted"
+          else
+            echo "==> ✓ $RG_PLATFORM already gone (terraform destroy succeeded)"
+          fi
