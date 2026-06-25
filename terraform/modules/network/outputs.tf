@@ -28,3 +28,13 @@ output "private_dns_zone_names" {
   description = "Map of service name to Private DNS zone name"
   value       = { for k, v in azurerm_private_dns_zone.this : k => v.name }
 }
+
+output "aks_api_dns_zone_id" {
+  description = "BYO private DNS zone ID for the private AKS API server (privatelink.<region>.azmk8s.io). Passed to the AKS module as private_dns_zone_id, and granted to the cluster identity."
+  value       = azurerm_private_dns_zone.aks_api.id
+}
+
+output "aks_api_dns_zone_name" {
+  description = "BYO private DNS zone name for the private AKS API server — used to link the zone to the hub VNet."
+  value       = azurerm_private_dns_zone.aks_api.name
+}

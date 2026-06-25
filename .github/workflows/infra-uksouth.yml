@@ -31,7 +31,13 @@ jobs:
     # pr-validation still runs fmt+validate, and the full plan+apply runs
     # on merge to main anyway.
     if: github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
+
+    # Private cluster (ADR-0035): the push/dispatch apply runs `terraform apply`
+    # (helm/kubernetes providers) and the post-apply kubectl block against the
+    # PRIVATE API server, which is only reachable from the in-VNet self-hosted
+    # runner. PR plans stay on a hosted runner (and use -refresh=false, see the
+    # plan step) so opening a PR never needs the runner online.
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted", "vnet", "uksouth"]') }}
 
     defaults:
       run:
@@ -78,7 +84,15 @@ jobs:
       - name: Terraform plan
         id: plan
         run: |
-          terraform plan \
+          # On a PR the hosted runner can't reach the private API server, so skip
+          # refreshing helm/kubernetes resources (-refresh=false). The plan is
+          # still a useful preview; the authoritative refresh + apply happens on
+          # the self-hosted runner on push. See ADR-0035.
+          REFRESH=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            REFRESH="-refresh=false"
+          fi
+          terraform plan $REFRESH \
             -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
             -var="name_suffix=${{ secrets.NAME_SUFFIX }}" \
             -var="gh_actions_sp_object_id=${{ secrets.GH_ACTIONS_SP_OBJECT_ID }}" \
@@ -88,19 +102,44 @@ jobs:
             -var="alert_email_address=${{ secrets.ACME_EMAIL }}" \
             -out=tfplan -no-color | tee plan_output.txt
 
+      # Build a high-signal digest for the PR comment. A full plan is huge and
+      # truncating it from the TOP drops the two things you actually want — the
+      # list of resources changing and the Plan:/Outputs summary at the very
+      # end. This pulls out the per-resource action lines (names + create/
+      # update/destroy/replace) and the tail (Plan: counts + Changes to Outputs).
+      # The full plan stays in this job's log above.
+      - name: Summarise plan
+        id: digest
+        run: |
+          CHANGES=$(grep -E '^[[:space:]]*# ' plan_output.txt \
+            | grep -E 'will be|must be replaced' \
+            | sed -E 's/^[[:space:]]*# //' || true)
+          {
+            echo "== Resource changes =="
+            echo "${CHANGES:-(no resource changes)}"
+            echo
+            echo "== Plan summary & outputs =="
+            awk '/^Plan: |^No changes\.|^Changes to Outputs:/{p=1} p' plan_output.txt
+          } > plan_digest.txt
+          echo "::group::Plan digest"; cat plan_digest.txt; echo "::endgroup::"
+
       - name: Comment plan on PR
         if: github.event_name == 'pull_request'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
         with:
           script: |
             const fs = require('fs');
-            const plan = fs.readFileSync('terraform/environments/uksouth-primary/plan_output.txt', 'utf8');
-            const truncated = plan.length > 60000 ? plan.substring(0, 60000) + '\n\n...(truncated)' : plan;
+            const digest = fs.readFileSync('terraform/environments/uksouth-primary/plan_digest.txt', 'utf8');
+            const truncated = digest.length > 60000
+              ? digest.substring(0, 60000) + '\n\n...(truncated)'
+              : digest;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '### Terraform plan — uksouth-primary\n```\n' + truncated + '\n```'
+              body: '### Terraform plan — uksouth-primary\n```\n' + truncated +
+                '\n```\n\n_Full plan in the [workflow run log](' + runUrl + ')._'
             });
 
       - name: Terraform apply
