@@ -1,0 +1,105 @@
+name: Platform — hub VNet + self-hosted runner (deploy)
+
+# Deploys the durable platform layer (terraform/platform): the hub VNet and the
+# self-hosted GitHub Actions runner the private-cluster deploys run on. Runs on
+# a GitHub-hosted runner — everything here is control-plane (ARM), so it needs
+# no in-VNet path itself.
+#
+# After apply, registers the freshly-built VM as a repo runner: mints a 1-hour
+# registration token from the GitHub App and feeds it to the VM via
+# `az vm run-command`. No GitHub credential is ever stored on the VM.
+#
+# Manual prerequisites (one-time) — see ADR-0035 / docs/03-private-cluster-access.md:
+#   - A GitHub App installed on THIS repo with "Administration: read & write".
+#   - Secrets: RUNNER_APP_ID, RUNNER_APP_PRIVATE_KEY, RUNNER_SSH_PUBLIC_KEY.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  platform:
+    name: Terraform — platform
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform/platform
+
+    env:
+      ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+      ARM_USE_OIDC:        true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+
+      - name: Log in to Azure
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43  # v3.0.0
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ secrets.TF_STATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ secrets.TF_STATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ secrets.TF_STATE_CONTAINER }}" \
+            -backend-config="key=platform.tfstate"
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform apply
+        run: |
+          terraform apply -auto-approve \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="admin_ssh_public_key=${{ secrets.RUNNER_SSH_PUBLIC_KEY }}"
+
+      # ── Mint a short-lived runner registration token from the GitHub App ──────
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id:       ${{ secrets.RUNNER_APP_ID }}
+          private-key:  ${{ secrets.RUNNER_APP_PRIVATE_KEY }}
+
+      - name: Register the runner with the repo
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          RG=$(terraform output -raw hub_resource_group_name)
+          VM=$(terraform output -raw runner_vm_name)
+
+          # Administration:write token -> a 1-hour runner registration token.
+          REG_TOKEN=$(gh api --method POST \
+            "/repos/${{ github.repository }}/actions/runners/registration-token" \
+            --jq .token)
+          echo "::add-mask::$REG_TOKEN"
+
+          # Wait for cloud-init to finish, then register. The token is passed as
+          # a positional parameter ($1) so it never appears in the script body.
+          az vm run-command invoke \
+            --resource-group "$RG" --name "$VM" \
+            --command-id RunShellScript \
+            --scripts 'for i in $(seq 1 60); do [ -f /opt/.runner-bootstrap-complete ] && break; sleep 10; done; sudo /opt/register-runner.sh "$1" "$2"' \
+            --parameters "$REG_TOKEN" "${{ github.server_url }}/${{ github.repository }}" \
+            --output none
+          echo "✓ runner registration submitted; check Settings → Actions → Runners for Online status"
