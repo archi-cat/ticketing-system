@@ -4,16 +4,10 @@
 # unknown. Each has a reason and, where relevant, a phase reference.
 # Reviewed: 2026-05-22 (Phase 2, Terraform scanning triage).
 
-# AZU-0041 — AKS API server not restricted to specific IP ranges.
-# AZU-0065 — AKS cluster is not a private cluster.
-# Accepted: the deploy workflows run on GitHub-hosted runners, which have
-# a wide, non-fixed IP range — an authorized-IP allow-list would have to
-# admit nearly all of GitHub's published ranges. A private cluster would
-# require self-hosted runners inside the VNet or `az aks command invoke`.
-# Restricting API access is a Phase 3 hardening item, tracked alongside
-# the Private Endpoints work.
-AVD-AZU-0041
-AVD-AZU-0065
+# AZU-0041 (API server IP restriction) and AZU-0065 (private cluster) were
+# removed in Phase 3 Tier 3 #13 — the cluster is now private (no public API
+# endpoint) with the deploy running on an in-VNet self-hosted runner. See
+# ADR-0035.
 
 # AZU-0066 — Azure Policy add-on not enabled on AKS.
 # Accepted for Phase 2: the Azure Policy / Gatekeeper add-on is a Phase 3

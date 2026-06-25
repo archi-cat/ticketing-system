@@ -147,3 +147,25 @@ resource "azurerm_private_dns_zone_virtual_network_link" "this" {
   registration_enabled  = false
   tags                  = var.tags
 }
+
+# ── Private API server DNS zone (Phase 3 Tier 3 #13 / ADR-0035) ───────────────
+# BYO private DNS zone for the private AKS API server. Kept separate from the
+# PaaS zones above because it is owned/linked differently: AKS registers the API
+# server's A record here, the cluster's control-plane identity needs Private DNS
+# Zone Contributor on it, and it is linked to BOTH this spoke VNet (below) and
+# the hub VNet (from the env, via remote state) so the in-VNet runner resolves
+# the API FQDN. The zone name is fixed by Azure: privatelink.<region>.azmk8s.io.
+resource "azurerm_private_dns_zone" "aks_api" {
+  name                = "privatelink.${var.location}.azmk8s.io"
+  resource_group_name = var.resource_group_name
+  tags                = var.tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "aks_api_spoke" {
+  name                  = "aks-api-spoke-link"
+  resource_group_name   = var.resource_group_name
+  private_dns_zone_name = azurerm_private_dns_zone.aks_api.name
+  virtual_network_id    = azurerm_virtual_network.main.id
+  registration_enabled  = false
+  tags                  = var.tags
+}

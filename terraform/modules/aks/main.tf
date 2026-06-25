@@ -24,6 +24,16 @@ resource "azurerm_kubernetes_cluster" "main" {
   # explicitly documents the intent and satisfies static analysis.
   role_based_access_control_enabled = true
 
+  # ── Private cluster (Phase 3 Tier 3 #13 / ADR-0035) ─────────────────────────
+  # The API server gets a private endpoint in the cluster VNet; there is no
+  # public FQDN. Reachable only from inside the VNet (or a peered one) — which
+  # is why the deploy runs on the in-VNet self-hosted runner. The API A record
+  # is registered in the BYO private DNS zone below (linked to both the spoke
+  # and the hub so the runner resolves it). Closes AVD-AZU-0041 / AVD-AZU-0065.
+  private_cluster_enabled             = true
+  private_cluster_public_fqdn_enabled = false
+  private_dns_zone_id                 = var.private_dns_zone_id
+
   # ── Workload Identity ───────────────────────────────────────────────────────
   # OIDC issuer must be enabled so Azure AD can validate tokens issued by the
   # cluster. workload_identity_enabled installs the mutating webhook that
@@ -52,11 +62,16 @@ resource "azurerm_kubernetes_cluster" "main" {
   }
 
   # ── Cluster identity ────────────────────────────────────────────────────────
-  # System-assigned identity for the cluster control plane. This identity
-  # manages Azure resources on behalf of the cluster (load balancers, disks).
-  # Application pod authentication uses Workload Identity, not this identity.
+  # User-assigned control plane identity (not system-assigned) — required by the
+  # BYO private DNS zone above: the identity must already hold Private DNS Zone
+  # Contributor on that zone before the cluster is created, so it can't be one
+  # that only comes into existence at creation time. The caller also grants it
+  # Network Contributor on the node-subnet VNet. The kubelet identity is still
+  # auto-managed by AKS (see kubelet_identity outputs). Application pods
+  # authenticate via Workload Identity, not this identity.
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [var.cluster_identity_id]
   }
 
   # ── Networking ──────────────────────────────────────────────────────────────

@@ -23,11 +23,6 @@ output "kubelet_identity_client_id" {
   value       = azurerm_kubernetes_cluster.main.kubelet_identity[0].client_id
 }
 
-output "cluster_identity_principal_id" {
-  description = "Cluster control plane identity principal ID — used for any role assignments the cluster itself needs"
-  value       = azurerm_kubernetes_cluster.main.identity[0].principal_id
-}
-
 # Surface the ingress_profile resource so consumers can depend on it —
 # the add-on UAMI doesn't exist until this has been applied.
 output "ingress_profile_id" {

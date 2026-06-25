@@ -57,18 +57,20 @@ provider "azapi" {
 
 # ── Kubernetes-adjacent providers ─────────────────────────────────────────────
 # helm + kubernetes both authenticate against the AKS API server using the
-# client cert/key from kube_config (the cluster currently has local accounts
-# enabled). CRD-typed manifests (ClusterSecretStore, ClusterIssuer,
-# Certificate, ExternalSecret, PushSecret) are NOT applied via Terraform —
-# they live in k8s/cluster-addons/cert-pipeline/ and are applied by the
-# infra-uksouth workflow's post-apply step with `envsubst | kubectl apply`.
-# That split keeps Terraform's resource graph clean of CRDs whose provider
-# can't defer config until apply time.
+# client cert/key from kube_config (the cluster keeps local accounts enabled).
+# CRD-typed manifests (ClusterSecretStore, ClusterIssuer, Certificate,
+# ExternalSecret, PushSecret) are NOT applied via Terraform — they live in
+# k8s/cluster-addons/cert-pipeline/ and are applied by the infra-uksouth
+# workflow's post-apply step with `envsubst | kubectl apply`. That split keeps
+# Terraform's resource graph clean of CRDs whose provider can't defer config
+# until apply time.
 #
-# Once the cluster goes private in Phase 3 Tier 3, these blocks will need an
-# exec-plugin / kubelogin path AND a way for the Terraform runner to reach
-# the private API server (az aks command invoke or self-hosted runner in the
-# VNet).
+# The cluster is PRIVATE (ADR-0035): module.aks.host is the private API FQDN,
+# which only resolves and routes from inside the VNet. Both this apply (these
+# providers) and the post-apply kubectl steps therefore run on the in-VNet
+# self-hosted runner — see infra-uksouth.yml. Auth is unchanged: #13 changed the
+# network PATH, not the auth model (AAD / local-account-disable is a separate
+# future item), so cert/key auth from kube_config still applies.
 
 provider "helm" {
   kubernetes = {
@@ -113,6 +115,23 @@ data "terraform_remote_state" "acr" {
   }
 }
 
+# ── Reference the durable platform layer via remote state ─────────────────────
+# The hub VNet + self-hosted runner (terraform/platform). We need the hub VNet
+# ID to peer the spoke to it and to link the private API DNS zone to the hub so
+# the runner resolves the API FQDN. The platform is a FOUNDATIONAL layer (like
+# the shared ACR and the TF state account) — it must be deployed before this
+# environment can plan or apply. See ADR-0035.
+
+data "terraform_remote_state" "platform" {
+  backend = "azurerm"
+  config = {
+    resource_group_name  = "rg-terraform-state"
+    storage_account_name = "stterraformstatefloryda"
+    container_name       = "tfstate-ticketing"
+    key                  = "platform.tfstate"
+  }
+}
+
 # ── Network ───────────────────────────────────────────────────────────────────
 # Provisions the VNet, subnets (including delegated AGC and PostgreSQL subnets),
 # NSGs, and the five Private DNS zones for PaaS services.
@@ -136,6 +155,43 @@ module "network" {
   tags = var.tags
 }
 
+# ── Hub ↔ spoke peering + API DNS link (Phase 3 Tier 3 #13 / ADR-0035) ─────────
+# The private API server is reachable only from inside the VNet. The self-hosted
+# runner that runs this apply lives in the durable HUB VNet, so we peer the
+# per-deploy spoke to the hub (both directions, managed from here so they're
+# created/destroyed with each regional loop) and link the private API DNS zone
+# to the hub — together these let the runner resolve and reach the API FQDN.
+# The cluster add-ons depend on these being in place (see their depends_on).
+
+resource "azurerm_virtual_network_peering" "spoke_to_hub" {
+  name                         = "peer-spoke-to-hub"
+  resource_group_name          = azurerm_resource_group.main.name
+  virtual_network_name         = module.network.vnet_name
+  remote_virtual_network_id    = data.terraform_remote_state.platform.outputs.hub_vnet_id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic      = true
+}
+
+resource "azurerm_virtual_network_peering" "hub_to_spoke" {
+  name                         = "peer-hub-to-spoke"
+  resource_group_name          = data.terraform_remote_state.platform.outputs.hub_resource_group_name
+  virtual_network_name         = data.terraform_remote_state.platform.outputs.hub_vnet_name
+  remote_virtual_network_id    = module.network.vnet_id
+  allow_virtual_network_access = true
+  allow_forwarded_traffic      = true
+}
+
+# Link the private API DNS zone (in the spoke) to the hub VNet so the runner
+# resolves the API server's A record to its private IP.
+resource "azurerm_private_dns_zone_virtual_network_link" "aks_api_hub" {
+  name                  = "aks-api-hub-link"
+  resource_group_name   = azurerm_resource_group.main.name
+  private_dns_zone_name = module.network.aks_api_dns_zone_name
+  virtual_network_id    = data.terraform_remote_state.platform.outputs.hub_vnet_id
+  registration_enabled  = false
+  tags                  = var.tags
+}
+
 # ── Observability ─────────────────────────────────────────────────────────────
 # Created early so that AKS and the data layer can wire diagnostics into it.
 
@@ -157,6 +213,43 @@ module "observability" {
   tags = var.tags
 }
 
+# ── AKS control-plane identity (Phase 3 Tier 3 #13 / ADR-0035) ────────────────
+# User-assigned identity for the private cluster's control plane. Pre-created
+# (not system-assigned) so it can be granted the BYO private DNS zone and the
+# node VNet BEFORE the cluster is created. Network Contributor on the spoke VNet
+# lets AKS manage the node subnets + load balancer; Private DNS Zone Contributor
+# on the API zone lets it register the API server's A record. The kubelet
+# identity stays auto-managed by AKS (which handles its own Managed Identity
+# Operator grant). A short wait lets the role assignments propagate before the
+# cluster create consumes them.
+
+resource "azurerm_user_assigned_identity" "aks_control_plane" {
+  name                = "uami-aks-ticketing-uksouth-cp"
+  location            = var.location
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = var.tags
+}
+
+resource "azurerm_role_assignment" "aks_cp_network_contributor" {
+  scope                = module.network.vnet_id
+  role_definition_name = "Network Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks_control_plane.principal_id
+}
+
+resource "azurerm_role_assignment" "aks_cp_private_dns" {
+  scope                = module.network.aks_api_dns_zone_id
+  role_definition_name = "Private DNS Zone Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks_control_plane.principal_id
+}
+
+resource "time_sleep" "aks_cp_role_propagation" {
+  depends_on = [
+    azurerm_role_assignment.aks_cp_network_contributor,
+    azurerm_role_assignment.aks_cp_private_dns,
+  ]
+  create_duration = "60s"
+}
+
 # ── AKS cluster ───────────────────────────────────────────────────────────────
 # Created before identity because identity needs the cluster's OIDC issuer URL
 # to set up federated credentials. The dependency graph handles this.
@@ -172,9 +265,16 @@ module "aks" {
   system_subnet_id = module.network.subnet_ids.aks_system
   user_subnet_id   = module.network.subnet_ids.aks_user
 
+  # Private cluster (ADR-0035): user-assigned control-plane identity + BYO
+  # private DNS zone, both wired above and pre-granted before this applies.
+  cluster_identity_id = azurerm_user_assigned_identity.aks_control_plane.id
+  private_dns_zone_id = module.network.aks_api_dns_zone_id
+
   log_analytics_workspace_id = module.observability.log_analytics_workspace_id
 
   tags = var.tags
+
+  depends_on = [time_sleep.aks_cp_role_propagation]
 }
 
 # Grant the AKS kubelet identity AcrPull on the shared ACR.
@@ -466,6 +566,15 @@ resource "azurerm_role_assignment" "worker_sb_receiver" {
 
 module "cert_manager" {
   source = "../../modules/cluster-addons/cert-manager"
+
+  # The helm/kubernetes providers can only reach the PRIVATE API server once the
+  # spoke↔hub peering and the hub API-DNS link exist — order every add-on that
+  # talks to the API after them (ADR-0035).
+  depends_on = [
+    azurerm_virtual_network_peering.spoke_to_hub,
+    azurerm_virtual_network_peering.hub_to_spoke,
+    azurerm_private_dns_zone_virtual_network_link.aks_api_hub,
+  ]
 }
 
 # Kyverno — cluster-level Cosign signature enforcement (Phase 3 Tier 2 #7).
@@ -479,6 +588,13 @@ module "kyverno" {
   # the kubelet identity's client id (already holds AcrPull) so its azure
   # credential helper authenticates via IMDS — no separate identity needed.
   acr_pull_client_id = module.aks.kubelet_identity_client_id
+
+  # Reach the private API only after the in-VNet path is up (ADR-0035).
+  depends_on = [
+    azurerm_virtual_network_peering.spoke_to_hub,
+    azurerm_virtual_network_peering.hub_to_spoke,
+    azurerm_private_dns_zone_virtual_network_link.aks_api_hub,
+  ]
 }
 
 module "external_secrets" {
@@ -492,6 +608,13 @@ module "external_secrets" {
   key_vault_id = module.keyvault.vault_id
 
   tags = var.tags
+
+  # Reach the private API only after the in-VNet path is up (ADR-0035).
+  depends_on = [
+    azurerm_virtual_network_peering.spoke_to_hub,
+    azurerm_virtual_network_peering.hub_to_spoke,
+    azurerm_private_dns_zone_virtual_network_link.aks_api_hub,
+  ]
 }
 
 # ── Gateway TLS — cert flow (Phase 3 Tier 1 #1) ───────────────────────────────

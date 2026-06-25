@@ -71,6 +71,32 @@ variable "log_analytics_workspace_id" {
   type        = string
 }
 
+# ── Private cluster (Phase 3 Tier 3 #13 / ADR-0035) ───────────────────────────
+
+variable "cluster_identity_id" {
+  description = <<-EOT
+    Resource ID of the user-assigned identity used as the cluster's control
+    plane identity. A user-assigned (not system-assigned) identity is required
+    because a BYO private DNS zone must be granted to the identity BEFORE the
+    cluster is created — which a system-assigned identity, not existing until
+    creation, cannot satisfy. The caller pre-grants this identity Network
+    Contributor on the node subnets' VNet and Private DNS Zone Contributor on
+    private_dns_zone_id.
+  EOT
+  type        = string
+}
+
+variable "private_dns_zone_id" {
+  description = <<-EOT
+    Resource ID of the BYO private DNS zone (privatelink.<region>.azmk8s.io)
+    where the private API server's A record is registered. Owned by the caller
+    (the network module) so it can be linked to the hub VNet too — letting the
+    in-VNet runner resolve the API FQDN. The cluster identity must hold Private
+    DNS Zone Contributor on it.
+  EOT
+  type        = string
+}
+
 variable "tags" {
   description = "Tags applied to all resources"
   type        = map(string)
