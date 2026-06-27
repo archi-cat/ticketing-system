@@ -16,9 +16,16 @@ permissions:
   contents: read
 
 jobs:
+  # Ensure the in-VNet self-hosted runner is up — the kubectl steps reach the
+  # PRIVATE API server, routable only from inside the VNet (ADR-0035).
+  ensure-runner:
+    uses: ./.github/workflows/_ensure-runner.yml
+    secrets: inherit
+
   grant:
     name: Register Postgres principals
-    runs-on: ubuntu-latest
+    needs: ensure-runner
+    runs-on: [self-hosted, vnet, uksouth]
 
     env:
       ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}

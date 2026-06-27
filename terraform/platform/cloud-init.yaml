@@ -19,6 +19,7 @@ packages:
   - gettext-base   # envsubst (cert-pipeline / gateway / kyverno-policy manifests)
   - dnsutils       # dig (DuckDNS A-record step)
   - git            # actions/checkout
+  - docker.io      # docker login for cosign image-signature verification (db-* / event-upload)
 
 write_files:
   # Registers this VM as a repo runner. Args: <registration-token> <repo-url> [labels]
@@ -73,6 +74,10 @@ runcmd:
   - chmod +x /usr/local/bin/terraform
   # ── GitHub Actions runner agent (latest; NOT registered here) ───────────────
   - useradd -m -s /bin/bash runner || true
+  # Let the runner user drive docker (cosign login) without sudo. The runner
+  # service starts later (at registration), so it picks up the group cleanly.
+  - usermod -aG docker runner
+  - systemctl enable --now docker
   - mkdir -p /opt/actions-runner
   - RUNNER_VERSION=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')
   - curl -fsSL -o /tmp/runner.tar.gz "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"

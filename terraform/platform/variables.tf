@@ -39,7 +39,7 @@ variable "runner_vm_size" {
     VM size for the self-hosted runner. Standard_B2s (2 vCPU / 4 GiB,
     burstable) is enough to run terraform + kubectl for this project and is
     the cheapest size that comfortably builds the plan. Deallocate between
-    deploy loops to cut the bill to disk only — see docs/03-private-cluster-access.md.
+    deploy loops to cut the bill to disk only — see docs/04-private-cluster-access.md.
   EOT
   type        = string
   default     = "Standard_B2s"

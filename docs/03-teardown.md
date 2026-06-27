@@ -16,11 +16,15 @@ The teardown itself runs entirely through `.github/workflows/teardown.yml`. This
 
 Without this step, the next deploy registers fresh Let's Encrypt accounts (low-stakes per [docs/02-cert-rotation.md](02-cert-rotation.md), but worth doing if you're iterating frequently).
 
+The API server is private, so read these through the cluster command proxy (or from the runner — see [docs/04-private-cluster-access.md](04-private-cluster-access.md)):
+
 ```bash
-kubectl get secret -n cert-manager letsencrypt-staging-account-key \
-  -o yaml > letsencrypt-staging-account-key.yaml
-kubectl get secret -n cert-manager letsencrypt-production-account-key \
-  -o yaml > letsencrypt-production-account-key.yaml 2>/dev/null \
+az aks command invoke -g rg-ticketing-uksouth -n aks-ticketing-uksouth \
+  --command "kubectl get secret -n cert-manager letsencrypt-staging-account-key -o yaml" \
+  --query logs -o tsv > letsencrypt-staging-account-key.yaml
+az aks command invoke -g rg-ticketing-uksouth -n aks-ticketing-uksouth \
+  --command "kubectl get secret -n cert-manager letsencrypt-production-account-key -o yaml" \
+  --query logs -o tsv > letsencrypt-production-account-key.yaml \
   || echo "production key doesn't exist yet — only created on first production issuance"
 ```
 
@@ -63,6 +67,8 @@ Three inputs:
 ## What the workflow does, in order
 
 End-to-end takes ~30–50 minutes on a fully-deployed cluster (AKS teardown dominates — happens once during the graceful pass, potentially again during the backstop if anything's left).
+
+Because the cluster is private (#13), the regional graceful destroy runs on the in-VNet **self-hosted runner** — an `ensure-runner` job auto-starts it first so Terraform's helm provider can reach the private API to remove the cluster add-ons cleanly. The `guard` job stays on a hosted runner, and the platform layer (hub VNet + runner) survives the teardown.
 
 The workflow uses a **graceful-then-forceful** strategy:
 
@@ -136,6 +142,7 @@ Prints which RGs were deleted, whether soft-deleted KVs were purged, and whether
 The workflow deliberately doesn't touch:
 
 - **The Terraform state resource group** — bootstrap infrastructure, identified by the `TF_STATE_RESOURCE_GROUP` secret. Holds the state storage account.
+- **The platform layer (hub VNet + self-hosted runner)** — `terraform/platform`, in its own RG (`rg-ticketing-platform`) and state (`platform.tfstate`). This teardown never touches it; the runner is reused across loops. Tear it down deliberately with `platform-teardown.yml` (ADR-0035 / [docs/04-private-cluster-access.md](04-private-cluster-access.md)).
 - **The GitHub OIDC service principal and federated credentials** — subscription-scope; removing them would break every workflow.
 - **Any RG outside the explicit list** — the diagnostic listing at Phase 4 surfaces strays but won't auto-delete them.
 - **Repo secrets** — including `DUCKDNS_FQDN`, `ACME_EMAIL`, `DUCKDNS_API_TOKEN`, `NAME_SUFFIX`, etc. These persist on GitHub.
@@ -240,6 +247,7 @@ Nothing else is required between teardown and the next deploy beyond what's alre
 
 Specifically:
 
+- The **platform layer** (hub VNet + runner) is untouched by this teardown, so it's ready for the next deploy. If you also ran `platform-teardown.yml`, run `platform.yml` again and confirm the runner is Online **before** `infra-uksouth.yml` (the regional env reads `platform.tfstate`).
 - `infra-uksouth.yml` can run immediately. It'll create the regional RG from scratch.
 - `infra-shared.yml` should run first if the shared RG was destroyed too. ACR creation is fast (~2 min).
 - The DuckDNS A record will point at nothing until `infra-uksouth.yml`'s post-apply step updates it.
@@ -250,5 +258,5 @@ Specifically:
 The workflow is intentionally hardcoded for the current two-RG topology. It'll need updating when:
 
 - **Phase 3 Tier 1 #6 (Key Vault purge protection)** is un-deferred. Soft-delete behaviour changes; the purge step becomes irreversible-and-mandatory.
-- **Phase 3 Tier 1 #13 (private AKS cluster)** lands. Possible new subnet-level dependencies that affect delete order.
+- **Phase 3 Tier 3 #13 (private AKS cluster)** — **done.** The regional graceful destroy now runs on the in-VNet self-hosted runner (auto-started via `ensure-runner`) so the helm provider can reach the private API; the spoke↔hub peering is destroyed with the spoke, and the platform/runner survive. See ADR-0035.
 - **Phase 4 multi-region**. A second regional RG joins the list, and the order question gets interesting (delete both regions in parallel? sequentially? cross-region replicas first?).

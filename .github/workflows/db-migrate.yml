@@ -23,9 +23,17 @@ permissions:
   contents: read
 
 jobs:
+  # Make sure the in-VNet self-hosted runner is up — the kubectl steps below
+  # reach the PRIVATE API server, which is only routable from inside the VNet
+  # (ADR-0035). No-op if it's already running.
+  ensure-runner:
+    uses: ./.github/workflows/_ensure-runner.yml
+    secrets: inherit
+
   migrate:
     name: Run database migrations
-    runs-on: ubuntu-latest
+    needs: ensure-runner
+    runs-on: [self-hosted, vnet, uksouth]
 
     env:
       ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}

@@ -209,21 +209,19 @@ Tracked here because the pattern (Push once, sync via ESO) mirrors the DuckDNS-t
 
 ### 🔀 13. Private AKS cluster
 
-- [ ] `private_cluster_enabled = true`
-- [ ] Runner-access path chosen and implemented (see decision)
-- [ ] Every workflow that calls `kubectl` updated
-- [ ] Remove `AVD-AZU-0041` and `AVD-AZU-0065` from `.trivyignore`
-- [ ] Runbook updated for the new access path
+- [x] `private_cluster_enabled = true` (no public FQDN; BYO `privatelink.<region>.azmk8s.io` zone + user-assigned control-plane identity)
+- [x] Runner-access path chosen and implemented — **standing self-hosted runner in a durable hub VNet** (not `command invoke`: it can't carry Terraform's helm/kubernetes providers). New `terraform/platform` layer + `platform.yml` / `platform-teardown.yml` / `runner-power.yml` / `_ensure-runner.yml`; GitHub App registration
+- [x] Every workflow that calls `kubectl` updated — `infra-uksouth` split (PR plan hosted / apply self-hosted), `db-migrate` / `db-grant` / `db-load-events` / `event-upload` / `deploy-gateway` / `teardown` → self-hosted with an auto-start pre-job
+- [x] Remove `AVD-AZU-0041` and `AVD-AZU-0065` from `.trivyignore`
+- [x] Runbook for the new access path ([docs/04-private-cluster-access.md](docs/04-private-cluster-access.md))
+- [x] ADR-0035 — full decision captured ([docs/decisions/0035-private-aks-cluster.md](docs/decisions/0035-private-aks-cluster.md))
+- [ ] **Deploy-time:** one-time GitHub App + secrets setup, run `platform.yml`, then deploy and confirm the cluster is private + add-ons reconcile via the runner
 
 **Why:** Removes the public API server. Single biggest architectural lesson in this phase.
 **Effort:** large (cascades into every kubectl-using workflow)
+**Status:** Shipped as 3 PRs (platform + runner / private cluster + peering / workflows + docs). Auth unchanged (cert/key) — network path only; AAD + local-account-disable is a separate follow-up.
 
-**🔀 Decision — runner access (BIG delta):**
-
-- **Production:** Self-hosted runners inside the VNet (VM scale set or container apps). Real infra, runner lifecycle to maintain, runner image to keep patched.
-- **Learning:** `az aks command invoke` — Microsoft's CLI-proxied kubectl. No extra infra. Adds a few seconds per kubectl call, fine for our cadence.
-- **Public jumphost:** rejected — adds back a public surface.
-- **Recommendation:** `az aks command invoke` — demonstrates the private-cluster pattern without the ongoing operations of self-hosted runners. Note the production alternative in the runbook.
+**🔀 Decision — runner access (BIG delta):** Chose **self-hosted runner in the VNet** over `az aks command invoke`. The plan originally leaned toward `command invoke`, but it proxies only the kubectl/helm CLI — it cannot carry Terraform's `helm`/`kubernetes` providers, which a private-cluster apply depends on. The runner is standing (deallocated between sessions for cost) in a durable hub, peered to the per-deploy spoke. See ADR-0035 for the rejected alternatives (authorized IP ranges, ephemeral two-phase, PAT).
 
 ---
 
