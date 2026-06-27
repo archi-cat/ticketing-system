@@ -21,8 +21,16 @@ permissions:
   pull-requests: write
 
 jobs:
+  # Start the in-VNet runner before a push/dispatch apply (which runs on it).
+  # Skipped on pull_request — PR plans run on a hosted runner and never need it.
+  ensure-runner:
+    if: github.event_name != 'pull_request' && github.actor != 'dependabot[bot]'
+    uses: ./.github/workflows/_ensure-runner.yml
+    secrets: inherit
+
   terraform:
     name: Terraform — uksouth
+    needs: [ensure-runner]
     # Dependabot-triggered runs don't receive repository Actions secrets
     # (GitHub treats them like fork PRs), so azure/login would fail with
     # empty client-id/tenant-id. Action-bump PRs that touch this file
@@ -30,7 +38,13 @@ jobs:
     # Skipping is safe: the plan can't be affected by an action SHA bump,
     # pr-validation still runs fmt+validate, and the full plan+apply runs
     # on merge to main anyway.
-    if: github.actor != 'dependabot[bot]'
+    #
+    # ensure-runner is skipped on PRs, so tolerate a skipped dependency
+    # (!cancelled() + result check) — otherwise the PR plan would be skipped too.
+    if: >-
+      ${{ !cancelled()
+          && github.actor != 'dependabot[bot]'
+          && (needs.ensure-runner.result == 'success' || needs.ensure-runner.result == 'skipped') }}
 
     # Private cluster (ADR-0035): the push/dispatch apply runs `terraform apply`
     # (helm/kubernetes providers) and the post-apply kubectl block against the

@@ -9,7 +9,7 @@ name: Platform — hub VNet + self-hosted runner (deploy)
 # registration token from the GitHub App and feeds it to the VM via
 # `az vm run-command`. No GitHub credential is ever stored on the VM.
 #
-# Manual prerequisites (one-time) — see ADR-0035 / docs/03-private-cluster-access.md:
+# Manual prerequisites (one-time) — see ADR-0035 / docs/04-private-cluster-access.md:
 #   - A GitHub App installed on THIS repo with "Administration: read & write".
 #   - Secrets: RUNNER_APP_ID, RUNNER_APP_PRIVATE_KEY, RUNNER_SSH_PUBLIC_KEY.
 

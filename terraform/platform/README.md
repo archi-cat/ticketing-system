@@ -20,7 +20,7 @@ Durable "ops" layer for the private-cluster deploy path (Phase 3 #13 / **ADR-003
 
 ## Cost
 
-`Standard_B2s` runner. **Deallocate between loops** (`az vm deallocate`) to drop the bill to disk only (~£2–4/mo); the systemd runner service reconnects automatically on `az vm start`. See [docs/03-private-cluster-access.md](../../docs/03-private-cluster-access.md).
+`Standard_B2s` runner. **Deallocate between loops** (`az vm deallocate`) to drop the bill to disk only (~£2–4/mo); the systemd runner service reconnects automatically on `az vm start`. See [docs/04-private-cluster-access.md](../../docs/04-private-cluster-access.md).
 
 ## Inputs / Outputs
 

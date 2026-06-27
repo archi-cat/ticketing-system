@@ -69,11 +69,20 @@ jobs:
           fi
           echo "✓ Confirmation accepted."
 
+  # Start the in-VNet runner so the graceful `terraform destroy` can reach the
+  # private API to remove the cluster add-ons (helm releases) before the cluster
+  # goes. The runner lives in the platform layer, which this teardown does NOT
+  # touch, so it survives the regional destroy. (ADR-0035)
+  ensure-runner:
+    needs: guard
+    uses: ./.github/workflows/_ensure-runner.yml
+    secrets: inherit
+
   # ── Teardown: the actual work ─────────────────────────────────────────────
   teardown:
     name: Tear down
-    needs: guard
-    runs-on: ubuntu-latest
+    needs: [guard, ensure-runner]
+    runs-on: [self-hosted, vnet, uksouth]
 
     env:
       RG_REGIONAL:    rg-ticketing-uksouth

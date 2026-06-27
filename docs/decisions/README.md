@@ -52,3 +52,4 @@ ADRs use the [MADR (Markdown Any Decision Records)](https://adr.github.io/madr/)
 | [0032](0032-event-upload-job.md) | In-cluster event upload via a Kubernetes Job | Accepted |
 | [0033](0033-workload-resilience-resource-governance.md) | Workload resilience (PDBs) and resource governance (LimitRange/ResourceQuota, HPA) | Accepted |
 | [0034](0034-storage-public-endpoint-off.md) | Close the event-data storage public endpoint (data_plane_available=false) | Accepted |
+| [0035](0035-private-aks-cluster.md) | Private AKS cluster via a standing in-VNet self-hosted runner (hub/spoke) | Accepted |

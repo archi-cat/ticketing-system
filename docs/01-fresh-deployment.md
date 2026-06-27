@@ -21,6 +21,12 @@ including subtle issues that are easy to miss:
 - **AGC add-on is preview** — `ApplicationLoadBalancerPreview` and
   `ManagedGatewayAPIPreview` must be registered once per subscription.
   Phase 0.1.
+- **Private API server (Phase 3 Tier 3 #13)** — the AKS API server has no
+  public endpoint. `az aks get-credentials` + `kubectl` from your laptop won't
+  connect; cluster-touching workflows run on an in-VNet self-hosted runner, and
+  ad-hoc commands go through `az aks command invoke`. The runner lives in the
+  durable `terraform/platform` layer and must be deployed first — Phase 0.5.
+  See [docs/04-private-cluster-access.md](04-private-cluster-access.md).
 
 ## Phase 0 — Subscription prerequisites (one-time)
 
@@ -87,6 +93,26 @@ by the same post-apply step. None of them appear in Terraform state or plan
 output; ESO retrieves the API token from Key Vault at runtime via Workload
 Identity.
 
+### 0.5 Self-hosted runner for the private cluster (Phase 3 Tier 3 #13)
+
+The AKS API server is private, so `terraform apply` and every kubectl-using
+workflow run on a self-hosted runner inside the VNet. The runner lives in the
+durable `terraform/platform` layer (hub VNet + VM), deployed once and kept
+across teardown/redeploy cycles (the regional teardown never touches it).
+
+One-time, per repo:
+
+1. Create a **GitHub App** installed on this repo with the **Administration:
+   Read & write** repository permission. Add repo secrets `RUNNER_APP_ID`,
+   `RUNNER_APP_PRIVATE_KEY`, `RUNNER_SSH_PUBLIC_KEY`.
+2. Run `platform.yml` and confirm the runner is **Online** (Settings → Actions
+   → Runners), labelled `self-hosted, vnet, uksouth`.
+
+Full detail — including the cost model (deallocate the runner between sessions,
+auto-started by each deploy) — is in
+[docs/04-private-cluster-access.md](04-private-cluster-access.md). ADR-0035 has
+the design and rejected alternatives.
+
 ## Phase 1 — Infrastructure deployment
 
 ### 1.1 Deploy the shared ACR
@@ -103,10 +129,15 @@ Wait for completion (~5 minutes).
 gh workflow run infra-uksouth.yml
 ```
 
-This single apply (~20-25 minutes) creates everything: VNet, AKS, the AGC
-add-on (enabled via the azapi provider), AGC itself, the data layer, and
-all role assignments. There is no separate manual add-on step — see
-ADR-0016.
+> **Runner required.** Because the cluster is private, the `apply` and its
+> post-apply `kubectl` block run on the in-VNet self-hosted runner (Phase 0.5).
+> The workflow auto-starts the runner; just make sure the platform is deployed.
+> (PR plans run on a hosted runner and don't need it.)
+
+This single apply (~20-25 minutes) creates everything: VNet, AKS (private API
+server, peered to the platform hub), the AGC add-on (enabled via the azapi
+provider), AGC itself, the data layer, and all role assignments. There is no
+separate manual add-on step — see ADR-0016.
 
 The apply includes a ~3-minute wait after the AGC add-on is enabled,
 allowing the AKS-managed ALB Controller UAMI to materialise before the
@@ -378,36 +409,38 @@ gh workflow run deploy-scheduler.yml
 
 Each takes 5-8 minutes. They run in parallel.
 
-Verify after completion:
+Verify after completion. The API server is private, so `kubectl` from your
+laptop won't connect — go through `az aks command invoke` (or the runner):
 
 ```powershell
-az aks get-credentials -g rg-ticketing-uksouth -n (az aks list -g rg-ticketing-uksouth --query '[0].name' -o tsv)
-kubectl get pods -n ticketing
+az aks command invoke -g rg-ticketing-uksouth -n aks-ticketing-uksouth `
+  --command "kubectl get pods -n ticketing"
 ```
 
 All six pods (api × 2, worker × 2, scheduler × 2) should be `1/1 Running`.
 
 ## Phase 4 — End-to-end smoke test
 
-```powershell
-# Port-forward to the API
-kubectl port-forward -n ticketing svc/api 8000:80
-```
-
-In another shell:
+The app's data path is **unaffected** by the private cluster — it's served on
+the public Gateway (AGC frontend) at your DuckDNS FQDN over HTTPS. Test against
+that rather than a `kubectl port-forward` (which would need the private API):
 
 ```powershell
-curl http://localhost:8000/events
-$EVENT_ID = (curl -s http://localhost:8000/events | ConvertFrom-Json).items[0].id
-$RES = curl -X POST "http://localhost:8000/events/$EVENT_ID/reservations" `
+$BASE = "https://$env:DUCKDNS_FQDN"   # e.g. https://ticketing-floryda.duckdns.org
+
+curl "$BASE/events"
+$EVENT_ID = (curl -s "$BASE/events" | ConvertFrom-Json).items[0].id
+$RES = curl -X POST "$BASE/events/$EVENT_ID/reservations" `
     -H "Content-Type: application/json" `
     -d '{"customer_email":"smoke@example.com","seat_count":2}' | ConvertFrom-Json
-curl -X POST "http://localhost:8000/reservations/$($RES.id)/confirm" `
+curl -X POST "$BASE/reservations/$($RES.id)/confirm" `
     -H "Content-Type: application/json" `
     -d '{"card_last_four":"1234"}'
 ```
 
 If the reservation creates and confirms, the system is end-to-end working.
+(For an isolated API test via `kubectl port-forward`, run it from the runner —
+see [docs/04-private-cluster-access.md](04-private-cluster-access.md).)
 
 ## Troubleshooting
 
