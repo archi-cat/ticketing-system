@@ -22,6 +22,16 @@ packages:
   - docker.io      # docker login for cosign image-signature verification (db-* / event-upload)
 
 write_files:
+  # Passwordless sudo for the runner user — matches the GitHub-hosted runner
+  # contract (their runner user has NOPASSWD sudo baked in). Workflow steps that
+  # write to system paths (e.g. `sudo mv kubelogin /usr/local/bin`) assume this;
+  # without it sudo blocks on a password it can't read non-interactively.
+  # Trade-off (see ADR-0035): the runner user can root this single-purpose VM.
+  - path: /etc/sudoers.d/runner
+    permissions: "0440"
+    content: |
+      runner ALL=(ALL) NOPASSWD:ALL
+
   # Registers this VM as a repo runner. Args: <registration-token> <repo-url> [labels]
   - path: /opt/register-runner.sh
     permissions: "0755"

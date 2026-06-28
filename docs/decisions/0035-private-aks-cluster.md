@@ -53,6 +53,7 @@ The runner registers via a **GitHub App** (installed on this repo only, *Adminis
 - **The platform is a hard dependency of the regional env** (`data.terraform_remote_state.platform`). Tearing the platform down red-lines regional terraform plans — the same coupling the env already has on the shared ACR. The platform is therefore treated as durable: keep it, deallocate the VM; only `platform-teardown` it for long idles / rebuilds.
 - **The GitHub App key is the one stored secret**, and *Administration: write* is broad (also governs repo settings). Contained by a single-repo install + 1-hour tokens. A narrower runner-only permission exists only at org scope (would require moving the repo into an org).
 - **Docker on the runner** for the cosign `docker login` step — standard for a CI runner; keeps the image-verification path byte-identical.
+- **Passwordless sudo for the runner user.** Workflow steps written for GitHub-hosted runners assume the runner user has NOPASSWD sudo (e.g. `sudo mv kubelogin /usr/local/bin`); cloud-init grants it via `/etc/sudoers.d/runner` so those steps run unchanged. This lets the runner user root the VM — accepted because it's a single-purpose, single-tenant runner that mirrors the hosted-runner security model.
 
 ## Operator path
 
