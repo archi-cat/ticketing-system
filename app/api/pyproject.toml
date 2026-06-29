@@ -56,7 +56,7 @@ upload-events = "ticketing_api.commands.upload_events:main"
 
 [dependency-groups]
 dev = [
-    "pytest==9.1.0",
+    "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
     "httpx==0.28.1",                    # used by FastAPI's TestClient
