@@ -7,10 +7,10 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     # Settings and validation
     "pydantic==2.13.4",
-    "pydantic-settings==2.14.1",
+    "pydantic-settings==2.14.2",
 
     # Database — same stack as the API
-    "sqlalchemy[asyncio]==2.0.50",
+    "sqlalchemy[asyncio]==2.0.51",
     "asyncpg==0.31.0",
 
     # Azure SDKs
@@ -24,7 +24,7 @@ dependencies = [
     # opentelemetry-instrumentation core that azure-monitor-opentelemetry pins
     # to ~=0.61b0; hence 0.61b0 + the dependabot.yml ignore that keeps it from
     # being bumped independently of azure-monitor.
-    "azure-monitor-opentelemetry==1.8.8",
+    "azure-monitor-opentelemetry==1.8.9",
     "opentelemetry-instrumentation-sqlalchemy==0.61b0",
     "structlog==26.1.0",
 
@@ -40,10 +40,10 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest==9.1.0",
+    "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-cov==7.1.0",
-    "ruff==0.15.17",
+    "ruff==0.15.20",
     "mypy==2.1.0",
 ]
 
