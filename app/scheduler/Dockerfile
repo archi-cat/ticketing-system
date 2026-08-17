@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM python:3.13.14-slim-bookworm AS builder
+FROM python:3.13.15-slim-bookworm AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.5.13 /uv /uvx /bin/
 
@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 # ─── Runtime ──────────────────────────────────────────────────────────────────
-FROM python:3.13.14-slim-bookworm AS runtime
+FROM python:3.13.15-slim-bookworm AS runtime
 
 RUN apt-get update && \
     apt-get upgrade -y --no-install-recommends && \
